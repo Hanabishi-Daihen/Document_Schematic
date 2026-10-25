@@ -1,20 +1,22 @@
 # Document Schematic — System Design
 
-Web app สำหรับรวมเอกสารจาก OneDrive องค์กร (Microsoft 365) ไว้ที่เดียว ค้นหาได้ และติดตามการแก้ไขของเอกสาร (Revised / Updated)
+Web app สำหรับรวมเอกสาร PDF จาก OneDrive องค์กร ไว้ที่เดียว ค้นหาได้ และติดตามการแก้ไขของเอกสาร (Revised / Updated)
 
-> **v2** — ปรับตามข้อมูลจริงขององค์กร: OneDrive องค์กร + แชร์ลิงก์สาธารณะ, ชื่อไฟล์อิสระต่อท้ายด้วย `Rev.N`, บางครั้งอัปเดตโดยไม่เปลี่ยนเลข Rev, ไฟล์ส่วนใหญ่เป็น PDF
+> **v3** — **ต้องใช้งานได้ฟรีทั้งหมด** ใช้ **Google Apps Script (GAS)** เป็นตัวกลาง
+> เงื่อนไขจาก v2 ยังคงเดิม: OneDrive องค์กร + แชร์ลิงก์, ชื่อไฟล์อิสระต่อท้ายด้วย `Rev.N`, บางครั้งอัปเดตโดยไม่เปลี่ยนเลข Rev, ไฟล์ส่วนใหญ่เป็น PDF
 
 ---
 
-## 1. เงื่อนไขของระบบ (จากข้อมูลผู้ใช้)
+## 1. เลือกแพลตฟอร์ม (ฟรีเท่านั้น)
 
-| หัวข้อ | ข้อเท็จจริง | ผลต่อการออกแบบ |
-|---|---|---|
-| แหล่งเอกสาร | OneDrive องค์กร (Microsoft 365) แชร์ URL แบบสาธารณะ (Anyone with the link) | ใช้ Microsoft Graph API ด้วย App ขององค์กร → เปิดลิงก์ได้ทั้งไฟล์และโฟลเดอร์ (ดูข้อ 3) |
-| เลข Revision | มักมี `Rev.1`, `Rev.2` ท้ายชื่อไฟล์ แต่ไม่เสมอไป | Parse เลข Rev จากชื่อไฟล์ ถ้าไม่มีให้ใช้ลำดับ/วันที่แทน |
-| อัปเดตโดยไม่เปลี่ยน Rev | บางครั้งแก้ไฟล์แต่ยังเป็น Rev เดิม | แยก **Revision** (เลข Rev เปลี่ยน) กับ **Update** (เนื้อหาเปลี่ยน แต่เลข Rev เดิม) และอ้างอิงวันที่ของไฟล์ |
-| เลขที่เอกสาร | ไม่มีรูปแบบ ตั้งชื่ออิสระ + ต่อท้ายด้วย Rev. | ใช้ **ชื่อไฟล์ที่ตัดส่วน Rev ออก (base name)** เป็นตัวระบุเอกสาร |
-| ชนิดไฟล์ | ส่วนใหญ่ PDF | เน้น pipeline ของ PDF: แตกข้อความไทย, OCR สำรอง, preview ด้วย PDF.js, เปรียบเทียบหน้า PDF |
+| ทางเลือก | ข้อดี | ข้อเสีย | สรุป |
+|---|---|---|---|
+| **A. Google Apps Script + Sheets + Drive** | ฟรีจริง ไม่ต้องมีเซิร์ฟเวอร์, มี time trigger, **Google Drive OCR ภาษาไทยได้ฟรี**, เก็บไฟล์ได้ 15 GB | มี quota (รันได้ครั้งละ 6 นาที), หน้าเว็บช้ากว่าเว็บทั่วไปเล็กน้อย | ✅ **แนะนำ** |
+| B. Power Automate + SharePoint (ของ Microsoft 365 ที่องค์กรมีอยู่) | อยู่ใน license M365 แล้ว, SharePoint มี version history + ค้นหาไทยในตัว | ปรับแต่งหน้าเว็บ/ตรรกะ Rev ได้น้อย, flow บางตัวต้องใช้ premium connector | ทางเลือกถ้าอยากใช้ของ Microsoft ล้วน |
+| C. Cloudflare Workers + D1 + R2 + Pages | free tier สูง เว็บเร็วมาก | **แตกข้อความ/OCR PDF ภาษาไทยไม่ได้** (จำกัด CPU) | ไม่เหมาะกับงาน PDF |
+| D. Docker บนเซิร์ฟเวอร์ (แบบ v2) | ทำได้ทุกอย่าง | ต้องมีเครื่องเปิดตลอด (ค่าไฟ/ดูแลระบบ), cloud ฟรีอย่าง Oracle Always Free ต้องใช้บัตรเครดิตและอาจถูกเรียกคืน | ไม่ตรงเงื่อนไข "ฟรี" |
+
+**ทำไม GAS เหมาะที่สุด:** จุดยากของระบบคือ **การอ่านข้อความภาษาไทยจาก PDF** — Google Drive แปลง PDF เป็น Google Docs พร้อม OCR ภาษาไทยได้ฟรีผ่าน Drive API ซึ่งแพลตฟอร์มฟรีอื่นทำไม่ได้
 
 ---
 
@@ -22,391 +24,333 @@ Web app สำหรับรวมเอกสารจาก OneDrive อง�
 
 ```mermaid
 flowchart LR
-    U[ผู้ใช้ / Browser] -->|HTTPS| FE[Frontend<br/>Next.js + PDF.js]
-    FE -->|REST API| BE[Backend API<br/>FastAPI]
-    FE -->|Login| AAD[Microsoft Entra ID]
-    BE --> DB[(PostgreSQL)]
-    BE --> SE[(Meilisearch)]
-    BE --> Q[(Redis Queue)]
-    W[Sync Worker<br/>Python] --> Q
-    W -->|Microsoft Graph API| OD[OneDrive องค์กร]
-    W --> DB
-    W --> SE
-    W --> FS[(Object Storage<br/>สำเนา PDF ทุกเวอร์ชัน)]
-    BE --> FS
+    U[ผู้ใช้ / Browser] -->|เปิดเว็บ| WEB[GAS Web App<br/>HtmlService]
+    WEB <-->|google.script.run| GAS[GAS Backend<br/>Code.gs]
+    T[Time-driven Trigger<br/>ทุก 30 นาที] --> SYNC[GAS Sync Job]
+    SYNC -->|UrlFetchApp + OAuth| G[Microsoft Graph API]
+    G --> OD[OneDrive องค์กร]
+    SYNC --> SH[(Google Sheets<br/>ฐานข้อมูล)]
+    SYNC --> DR[(Google Drive<br/>สำเนา PDF + ข้อความ)]
+    SYNC -->|แปลง PDF + OCR ไทย| OCR[Drive API<br/>Advanced Service]
+    SYNC -->|สร้างไฟล์ index| DR
+    GAS --> SH
+    GAS --> DR
+    SYNC -->|แจ้งเตือน| MAIL[Gmail / Teams Webhook]
 ```
 
-| ส่วนประกอบ | หน้าที่ | เทคโนโลยี |
+| ส่วนประกอบ | ใช้อะไร (ฟรี) | หน้าที่ |
 |---|---|---|
-| Frontend | ค้นหา, รายการเอกสาร, ดู PDF, ประวัติ Revision | Next.js + Tailwind + PDF.js |
-| Backend API | REST API, ตรวจสิทธิ์ | **FastAPI (Python)** |
-| Sync Worker | ดึงไฟล์จาก OneDrive, แยก Rev, แตกข้อความ PDF, OCR | Python + Celery/RQ, **PyMuPDF**, Tesseract (`tha+eng`) |
-| PostgreSQL | metadata เอกสาร, เวอร์ชัน, ผู้ใช้ | PostgreSQL 16 |
-| Meilisearch | ค้นหา full-text ภาษาไทย (ตัดคำไทยได้ในตัว + ค้นได้แม้พิมพ์ผิด) | Meilisearch |
-| Object Storage | เก็บสำเนา PDF ทุกเวอร์ชัน | MinIO (on-prem) หรือ Azure Blob |
+| หน้าเว็บ | **GAS HtmlService** (HTML + Tailwind CDN + JavaScript) | ค้นหา, รายการเอกสาร, ดู PDF, ประวัติ, หน้า Admin |
+| Backend | **GAS** (`doGet`, ฟังก์ชันที่เรียกผ่าน `google.script.run`) | API ให้หน้าเว็บ |
+| Sync Job | **GAS time-driven trigger** | ดึงข้อมูลจาก OneDrive, แยก Rev, สร้างเวอร์ชัน |
+| ฐานข้อมูล | **Google Sheets** (แยก sheet ตามตาราง) | metadata เอกสาร/เวอร์ชัน |
+| เก็บไฟล์ | **Google Drive** (15 GB) | สำเนา PDF ทุกเวอร์ชัน, ข้อความที่แตกได้, ไฟล์ index ค้นหา |
+| แตกข้อความ / OCR | **Drive API (Advanced Service)** แปลง PDF → Google Docs `ocrLanguage: 'th'` | ได้ข้อความไทยสำหรับค้นหา |
+| เชื่อม OneDrive | **Microsoft Graph API** ผ่าน `UrlFetchApp` (การลงทะเบียน App ใน Entra ID ไม่มีค่าใช้จ่าย) | อ่านรายการไฟล์ + ดาวน์โหลด |
+| แจ้งเตือน | **MailApp** / **Teams Workflows webhook** | แจ้งเมื่อเอกสาร Revised |
+| จัดการโค้ด | **clasp** (CLI ของ Google) + GitHub repo นี้ | เขียนโค้ดในเครื่อง → push ขึ้น GAS |
 
-> **ทำไมเลือก Python ทั้ง API และ Worker:** เครื่องมือจัดการ PDF ภาษาไทยและ OCR ของ Python (PyMuPDF, Tesseract) ดีที่สุด ใช้ภาษาเดียวกันทั้งระบบทำให้ดูแลง่าย
-
-> **ทำไมต้องเก็บสำเนา PDF เอง:** เมื่อมีการอัปโหลดไฟล์ Rev ใหม่แล้วลบไฟล์เก่าทิ้ง หรือเขียนทับไฟล์เดิม ประวัติใน OneDrive อาจหายหรือถูกจำกัดจำนวนเวอร์ชัน การเก็บสำเนาเองทำให้เปิดดู/เปรียบเทียบ Rev เก่าได้เสมอ (PDF ส่วนใหญ่ขนาดไม่ใหญ่ ใช้พื้นที่ไม่มาก)
+**บัญชีที่ใช้:** สร้าง Gmail กลางของหน่วยงาน 1 บัญชี (เช่น `docs.yourteam@gmail.com`) เป็นเจ้าของ Script, Sheet และโฟลเดอร์ Drive เพื่อไม่ผูกกับบัญชีส่วนตัวของใคร
 
 ---
 
-## 3. การเชื่อมต่อ OneDrive องค์กร
+## 3. ข้อจำกัด (Quota) ของ GAS ฟรี และวิธีรับมือ
 
-### 3.1 การยืนยันตัวตน
-แม้ลิงก์จะเป็นแบบสาธารณะ แต่ Microsoft Graph API ยังต้องใช้ token เสมอ จึงต้อง:
+| Quota (บัญชี Gmail ฟรี) | ค่า | วิธีรับมือ |
+|---|---|---|
+| เวลารันต่อครั้ง | 6 นาที | ทำงานเป็น batch ประมวลผลทีละไม่กี่ไฟล์ แล้วเก็บตำแหน่งที่ทำค้างไว้ใน `PropertiesService` ให้รอบถัดไปทำต่อ |
+| เวลารวมของ trigger ต่อวัน | 90 นาที | sync ทุก 30 นาที (48 รอบ/วัน) รอบปกติใช้ไม่กี่วินาที เพราะส่วนใหญ่แค่เทียบ `cTag` — งานหนัก (ดาวน์โหลด/OCR) เกิดเฉพาะไฟล์ที่เปลี่ยน |
+| UrlFetch | 20,000 ครั้ง/วัน | เพียงพอมาก (listing โฟลเดอร์ใช้ ~1 call ต่อ 200 ไฟล์) |
+| ขนาด response ของ UrlFetch | 50 MB | PDF ทั่วไปไม่เกิน |
+| ส่งอีเมล | 100 ผู้รับ/วัน | รวมเป็นอีเมลสรุป (digest) แทนส่งทีละเอกสาร |
+| Google Sheets | 10 ล้าน cell | เก็บแค่ metadata ไม่เก็บเนื้อหาในชีต |
+| Google Drive | 15 GB (รวมกับ Gmail) | PDF 1,000 ไฟล์ × 3 เวอร์ชัน × ~1 MB ≈ 3 GB |
+| รันพร้อมกัน | 30 executions | ใช้ `LockService` กัน sync ซ้อนกัน |
 
-1. ลงทะเบียน App ใน **Microsoft Entra ID** ของ tenant องค์กร
-2. ขอ **Application permission**: `Files.Read.All` (+ `Sites.Read.All` ถ้าเอกสารอยู่ใน SharePoint site) และให้ IT Admin กด **Grant admin consent**
-3. Worker ใช้ **Client Credentials flow** (`client_id` + `client_secret`) ทำงานเบื้องหลังได้โดยไม่ต้องมีคน login
+> ถ้าอนาคตปริมาณงานเกิน quota: ย้าย Script ไปบัญชี Google Workspace (trigger 6 ชม./วัน) โดยโค้ดไม่ต้องเปลี่ยน
 
-> **ถ้าขอ admin consent ไม่ได้:** ใช้บัญชีกลาง (service account) login แบบ Delegated ครั้งเดียว แล้วเก็บ refresh token ไว้ให้ Worker ใช้ต่อ
+---
 
-### 3.2 แปลง URL สาธารณะเป็นไฟล์จริง
+## 4. การเชื่อมต่อ OneDrive องค์กร
+
+### 4.1 วิธีเข้าถึง (เลือกตามสิทธิ์ที่ได้จาก IT)
+
+| ระดับ | วิธี | ต้องการอะไร | ทำอะไรได้ |
+|---|---|---|---|
+| **1 (แนะนำ)** | Graph API แบบ **Application** (client credentials) | IT Admin ลงทะเบียน App + Grant admin consent `Files.Read.All` | ทุกอย่าง: อ่านโฟลเดอร์, ตรวจไฟล์ใหม่/เปลี่ยน อัตโนมัติ |
+| **2** | Graph API แบบ **Delegated** — login บัญชี Microsoft ครั้งเดียวผ่านไลบรารี [apps-script-oauth2](https://github.com/googleworkspace/apps-script-oauth2) แล้วเก็บ refresh token | ลงทะเบียน App ได้เอง (ถ้า tenant อนุญาต user consent) | เหมือนระดับ 1 แต่เห็นเฉพาะไฟล์ที่บัญชีนั้นเข้าถึงได้ |
+| **3 (สำรอง)** | ไม่ใช้ API — ดาวน์โหลดตรงจากลิงก์สาธารณะ (`<ลิงก์>?download=1`) | ไม่ต้องขอสิทธิ์อะไร | **ทีละไฟล์เท่านั้น** อ่านรายการในโฟลเดอร์ไม่ได้ → ไฟล์ Rev ใหม่ต้องให้ Admin เพิ่มลิงก์เอง, ตรวจการเปลี่ยนแปลงด้วยการดาวน์โหลดมาเทียบ hash |
+
+> ระดับ 3 ใช้ได้เป็นการชั่วคราวเท่านั้น และพฤติกรรม `?download=1` ของ OneDrive อาจเปลี่ยนได้ ต้องทดสอบกับลิงก์จริงก่อน
+
+### 4.2 ขอ token (ระดับ 1) ใน GAS
+```javascript
+function getGraphToken_() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('graph_token');
+  if (cached) return cached;
+
+  const p = PropertiesService.getScriptProperties();
+  const res = UrlFetchApp.fetch(
+    `https://login.microsoftonline.com/${p.getProperty('TENANT_ID')}/oauth2/v2.0/token`,
+    {
+      method: 'post',
+      payload: {
+        client_id: p.getProperty('CLIENT_ID'),
+        client_secret: p.getProperty('CLIENT_SECRET'),
+        scope: 'https://graph.microsoft.com/.default',
+        grant_type: 'client_credentials',
+      },
+    }
+  );
+  const { access_token, expires_in } = JSON.parse(res.getContentText());
+  cache.put('graph_token', access_token, Math.min(expires_in - 300, 21600));
+  return access_token;
+}
 ```
-shareUrl = "https://<org>-my.sharepoint.com/:f:/g/personal/.../EaBc..."
-encoded  = "u!" + base64url(shareUrl).rstrip("=")
-GET /shares/{encoded}/driveItem        → driveId, itemId, ชื่อ, เป็นไฟล์หรือโฟลเดอร์
+`CLIENT_SECRET` เก็บใน **Script Properties** เท่านั้น ห้ามเขียนลงโค้ดหรือ commit ขึ้น GitHub
+
+### 4.3 แปลงลิงก์แชร์เป็นไฟล์จริง
+```javascript
+function resolveShareUrl_(shareUrl) {
+  const encoded = 'u!' + Utilities.base64EncodeWebSafe(shareUrl).replace(/=+$/, '');
+  return graphGet_(`/shares/${encoded}/driveItem`); // → { id, name, parentReference.driveId, folder | file }
+}
 ```
-- ลิงก์ `/:f:/` = โฟลเดอร์, `/:b:/` = PDF, `/:w:/` `/:x:/` = Word/Excel
-- บันทึก `driveId` + `itemId` เป็น **Source** ใช้อ้างอิงต่อไป
-- ถ้าภายหลังลิงก์ถูกยกเลิก ระบบยังเข้าถึงไฟล์ได้ผ่าน `itemId` (ด้วยสิทธิ์ของ App) แต่จะแจ้งเตือน Admin ว่าลิงก์ใช้ไม่ได้แล้ว
+บันทึก `driveId` + `itemId` เป็น Source
 
-### 3.3 การตรวจจับการเปลี่ยนแปลง — Polling
-
-> ข้อจำกัดของ OneDrive องค์กร: **Delta query ใช้ได้เฉพาะที่ root ของ drive** ใช้กับโฟลเดอร์ที่แชร์มาโดยตรงไม่ได้ และ Webhook ก็แจ้งระดับทั้ง drive
-
-ดังนั้นแนะนำ **Polling แบบไล่โฟลเดอร์** ซึ่งง่ายและเพียงพอสำหรับเอกสารหลักร้อยถึงหลักพันไฟล์:
-
+### 4.4 ตรวจการเปลี่ยนแปลง — Polling ทุก 30 นาที
+OneDrive องค์กรใช้ Delta query ได้เฉพาะ root ของ drive จึงไล่อ่านโฟลเดอร์แทน:
 ```
-ทุก 15 นาที (ปรับได้) สำหรับแต่ละ Source:
-  1. ไล่ GET /drives/{driveId}/items/{itemId}/children (recursive, $select เฉพาะฟิลด์ที่ใช้)
-  2. เทียบกับฐานข้อมูลด้วย itemId:
-       - itemId ใหม่                     → ไฟล์ใหม่ → เข้ากระบวนการจับคู่เอกสาร (ข้อ 4)
-       - cTag/hash เปลี่ยน               → เนื้อหาเปลี่ยน → สร้างเวอร์ชันใหม่
-       - เปลี่ยนแค่ชื่อ/ที่อยู่ (eTag เปลี่ยน แต่ cTag เดิม) → อัปเดต metadata (และเลข Rev ถ้าชื่อเปลี่ยน)
-       - itemId หายไป                    → mark ว่า Missing (ไม่ลบประวัติ)
+สำหรับแต่ละ Source:
+  GET /drives/{driveId}/items/{itemId}/children?$select=id,name,cTag,file,fileSystemInfo,lastModifiedBy,parentReference,folder&$top=200
+  (ไล่โฟลเดอร์ย่อย, ตาม @odata.nextLink)
+  เทียบกับ sheet Files ด้วย itemId:
+    itemId ใหม่          → ไฟล์ใหม่ → จับคู่เอกสาร (ข้อ 5.3) → เข้าคิวประมวลผล
+    cTag เปลี่ยน          → เนื้อหาเปลี่ยน → เข้าคิวประมวลผล
+    ชื่อเปลี่ยน cTag เดิม  → อัปเดตชื่อ / เลข Rev
+    itemId หายไป          → Missing
 ```
-
 | ฟิลด์จาก Graph | ใช้ทำอะไร |
 |---|---|
-| `cTag` | เปลี่ยนเมื่อ **เนื้อหา** ไฟล์เปลี่ยนเท่านั้น → ใช้ตรวจการ Update |
-| `file.hashes.quickXorHash` | ยืนยันว่าเนื้อหาเปลี่ยนจริง / ตรวจไฟล์ซ้ำ |
-| `fileSystemInfo.lastModifiedDateTime` | วันที่แก้ไขไฟล์จริง (คงวันที่จากเครื่องผู้อัปโหลด) → ใช้แสดงเป็น **วันที่ของเอกสาร** |
-| `lastModifiedDateTime` | วันที่ไฟล์เปลี่ยนใน OneDrive |
+| `cTag` | เปลี่ยนเมื่อ **เนื้อหา** เปลี่ยนเท่านั้น → ตรวจ Update |
+| `file.hashes.quickXorHash` | ยืนยันเนื้อหาเปลี่ยนจริง |
+| `fileSystemInfo.lastModifiedDateTime` | **วันที่ของเอกสาร** ที่แสดงให้ผู้ใช้ |
 | `lastModifiedBy.user.displayName` | ผู้แก้ไข |
 
-ทางเลือกในอนาคต: ถ้าต้องการ realtime ให้ใช้ Webhook + Delta ที่ root ของ drive แล้วกรองเฉพาะไฟล์ใต้โฟลเดอร์ที่สนใจ (ต้องใช้สิทธิ์อ่านทั้ง drive)
+ดาวน์โหลดไฟล์: `GET /drives/{driveId}/items/{itemId}/content` (UrlFetchApp ตาม redirect ให้อัตโนมัติ)
 
 ---
 
-## 4. ระบบ Revision / Update (หัวใจของระบบ)
+## 5. ระบบ Revision / Update
 
-### 4.1 แนวคิด: แยก 2 ระดับ
-
+### 5.1 แยก 2 ระดับ
 ```
-เอกสาร (Document) — "ขั้นตอนการตรวจรับวัตถุดิบ"
- ├─ Rev.0
- │   └─ v1  (12/01/2026)
+ขั้นตอนการตรวจรับวัตถุดิบ
  ├─ Rev.1
- │   ├─ v2  (03/05/2026)
- │   └─ v3  (20/05/2026)   ← Update: แก้เนื้อหาแต่ยังเป็น Rev.1
- └─ Rev.2                  ← Revised: เลข Rev เปลี่ยน
-     └─ v4  (24/10/2026)   ← เวอร์ชันปัจจุบัน
+ │   ├─ v2 (03/05/2026)
+ │   └─ v3 (20/05/2026)  ← 📝 Updated: แก้เนื้อหาแต่ยังเป็น Rev.1
+ └─ Rev.2
+     └─ v4 (24/10/2026)  ← 🔄 Revised: เลข Rev เปลี่ยน (เวอร์ชันปัจจุบัน)
 ```
-
-| ระดับ | เกิดเมื่อ | ป้ายที่แสดง |
+| ระดับ | เกิดเมื่อ | ป้าย |
 |---|---|---|
-| **Revision** | เลข Rev ในชื่อไฟล์เพิ่มขึ้น (Rev.1 → Rev.2) | 🔄 **Revised** |
-| **Version (Update)** | เนื้อหาไฟล์เปลี่ยน (`cTag`/hash เปลี่ยน) แต่เลข Rev เดิมหรือไม่มีเลข Rev | 📝 **Updated** |
+| **Revision** | เลข Rev ในชื่อไฟล์เพิ่มขึ้น | 🔄 **Revised** |
+| **Version** | เนื้อหาเปลี่ยน (`cTag`) แต่เลข Rev เดิม / ไม่มีเลข Rev | 📝 **Updated** |
 
-การแสดงผลบนหน้าเว็บ: **`Rev.2 · อัปเดต 24 ต.ค. 2026`** — ผู้ใช้เห็นทั้งเลข Rev และวันที่ล่าสุด จึงรู้ได้แม้มีการแก้โดยไม่เปลี่ยนเลข Rev
+แสดงผล: **`Rev.2 · อัปเดต 24 ต.ค. 2026`**
 
-### 4.2 แยกเลข Rev ออกจากชื่อไฟล์
+### 5.2 แยกเลข Rev จากชื่อไฟล์ (ทดสอบแล้ว)
+```javascript
+const REV_PATTERN =
+  /[\s_\-.([]*(?<![A-Za-z])rev(?:ision)?\s*\.?\s*[-_:]?\s*(\d+|[A-Z])(?![A-Za-z0-9])[)\]]?/gi;
 
-ตัวอย่างชื่อไฟล์และผลลัพธ์:
-
-| ชื่อไฟล์ | Base name (ตัวระบุเอกสาร) | Rev |
+function parseFileName_(fileName) {
+  const stem = fileName.replace(/\.[A-Za-z0-9]{2,5}$/, '');
+  const matches = [...stem.matchAll(REV_PATTERN)];
+  const m = matches[matches.length - 1]; // ใช้ตัวสุดท้าย
+  const base = m ? stem.slice(0, m.index) + stem.slice(m.index + m[0].length) : stem;
+  return {
+    docKey: base.replace(/[\s_\-]+/g, ' ').trim().toLowerCase(),
+    rev: m ? m[1].toUpperCase() : null,
+  };
+}
+```
+| ชื่อไฟล์ | docKey | Rev |
 |---|---|---|
 | `ขั้นตอนการตรวจรับวัตถุดิบ Rev.2.pdf` | `ขั้นตอนการตรวจรับวัตถุดิบ` | 2 |
 | `Machine Setup_Rev.1.pdf` | `machine setup` | 1 |
 | `QC Checklist (Rev 3).pdf` | `qc checklist` | 3 |
 | `แบบฟอร์มขอซื้อ-REV.10.pdf` | `แบบฟอร์มขอซื้อ` | 10 |
-| `คู่มือพนักงานใหม่.pdf` | `คู่มือพนักงานใหม่` | — (ไม่มี) |
+| `ขั้นตอนRev.5.pdf` | `ขั้นตอน` | 5 |
+| `Review Report.pdf` | `review report` | — |
+| `คู่มือพนักงานใหม่.pdf` | `คู่มือพนักงานใหม่` | — |
 
-Regex เริ่มต้น (ไม่สนตัวพิมพ์เล็ก/ใหญ่ ตั้งค่าเพิ่มได้ในหน้า Admin):
-```python
-REV_PATTERN = re.compile(
-    r"[\s_\-\.\(\[]*(?<![A-Za-z])rev(?:ision)?\s*\.?\s*[-_:]?\s*(\d+|[A-Z])(?![A-Za-z0-9])[\)\]]?",
-    re.IGNORECASE,
-)
-# ใช้ match ตัวสุดท้ายในชื่อไฟล์ (หลังตัดนามสกุล)
-# ไม่จับคำอย่าง "Review", "Revenue" และจับได้แม้ติดกับอักษรไทย เช่น "ขั้นตอนRev.5"
-```
+(V8 runtime ของ GAS รองรับ lookbehind `(?<!...)` และ `matchAll`)
 
-การทำ **normalize** base name: ตัดนามสกุลไฟล์ → ตัดส่วน Rev → ตัวเล็กทั้งหมด → แปลง `_` `-` และช่องว่างซ้ำเป็นช่องว่างเดียว → trim
-ผลลัพธ์เก็บเป็น `doc_key` ใช้จับคู่เอกสาร
-
-### 4.3 การจับคู่ไฟล์ใหม่เข้ากับเอกสารเดิม
-
+### 5.3 จับคู่ไฟล์ใหม่กับเอกสารเดิม
 ```mermaid
 flowchart TD
-    A[พบไฟล์ใหม่ itemId ใหม่] --> B[แยก base name + เลข Rev]
-    B --> C{มีเอกสารที่ doc_key ตรงกัน<br/>ในโฟลเดอร์เดียวกัน?}
-    C -->|ใช่| D{เลข Rev ใหม่ > Rev ปัจจุบัน?}
-    D -->|ใช่| E[สร้าง Revision ใหม่<br/>🔄 Revised<br/>ไฟล์เก่า = Superseded]
-    D -->|เท่ากัน| F[สร้าง Version ใหม่<br/>📝 Updated]
-    D -->|น้อยกว่า| G[เก็บเป็นประวัติย้อนหลัง<br/>ไม่เปลี่ยนเวอร์ชันปัจจุบัน]
-    C -->|ไม่ตรง| H{ชื่อคล้ายกัน ≥ 90%?<br/>fuzzy match}
-    H -->|ใช่| I[เข้าคิวให้ Admin ยืนยัน]
-    H -->|ไม่| J[สร้างเอกสารใหม่ 🆕 New]
+    A[พบไฟล์ itemId ใหม่] --> B[parseFileName → docKey + Rev]
+    B --> C{มีเอกสาร docKey ตรงกัน<br/>ในโฟลเดอร์เดียวกัน?}
+    C -->|ใช่| D{Rev ใหม่ > Rev ปัจจุบัน?}
+    D -->|มากกว่า| E[Revision ใหม่ 🔄<br/>ไฟล์เก่า = Superseded]
+    D -->|เท่ากัน| F[Version ใหม่ 📝]
+    D -->|น้อยกว่า| G[เก็บเป็นประวัติย้อนหลัง]
+    C -->|ไม่ตรง| H{ชื่อคล้ายกัน ≥ 90%?}
+    H -->|ใช่| I[คิวให้ Admin ยืนยัน]
+    H -->|ไม่| J[เอกสารใหม่ 🆕]
 ```
 
-กรณีที่รองรับ:
-
-| สถานการณ์ | ระบบทำอะไร |
-|---|---|
-| อัปโหลด `ABC Rev.2.pdf` ใหม่ ข้าง `ABC Rev.1.pdf` | Revision ใหม่ → Rev.2 เป็นปัจจุบัน, Rev.1 ยังเปิดดูได้ในประวัติ |
-| เปลี่ยนชื่อไฟล์เดิมจาก Rev.1 เป็น Rev.2 และแก้เนื้อหา | itemId เดิม, Rev เพิ่ม → Revision ใหม่ |
-| แก้เนื้อหาไฟล์ `ABC Rev.1.pdf` โดยไม่เปลี่ยนชื่อ | Version ใหม่ภายใต้ Rev.1 → 📝 Updated + วันที่ใหม่ |
-| ไฟล์ไม่มีเลข Rev แล้วถูกแก้ | Version ใหม่ → 📝 Updated + วันที่ใหม่ |
-| เปลี่ยนชื่อไฟล์อย่างเดียว เนื้อหาเดิม | อัปเดตชื่อ ไม่สร้างเวอร์ชันใหม่ |
-| ลบไฟล์เก่าทิ้งหลังอัปโหลด Rev ใหม่ | ไม่กระทบ เพราะมีสำเนาใน Object Storage |
-| Admin ไม่เห็นด้วยกับการจับคู่ | กด "แยกเป็นเอกสารใหม่" / "รวมเข้ากับเอกสาร…" ได้ |
-
-### 4.4 ป้ายสถานะ
-
+### 5.4 ป้ายสถานะ
 | ป้าย | เงื่อนไข (N ตั้งค่าได้ ค่าเริ่มต้น 14 วัน) |
 |---|---|
-| 🆕 **New** | เอกสารเข้าระบบภายใน N วัน |
-| 🔄 **Revised** | เลข Rev เพิ่มขึ้นภายใน N วัน |
-| 📝 **Updated** | เนื้อหาเปลี่ยนโดยเลข Rev เดิม ภายใน N วัน |
-| 🔵 **ยังไม่ได้อ่าน** | ผู้ใช้คนนี้ยังไม่เคยเปิดเวอร์ชันล่าสุด |
-| ⚠️ **Missing** | ไฟล์หายจาก OneDrive (ถูกลบ/ย้ายออกนอกโฟลเดอร์) |
-| ⚪ **Superseded** | ไฟล์ Rev เก่าที่ยังค้างอยู่ใน OneDrive (แสดงในประวัติเท่านั้น ไม่แสดงในผลค้นหาหลัก) |
+| 🆕 New | เข้าระบบภายใน N วัน |
+| 🔄 Revised | เลข Rev เพิ่มภายใน N วัน |
+| 📝 Updated | เนื้อหาเปลี่ยน (Rev เดิม) ภายใน N วัน |
+| 🔵 ยังไม่ได้อ่าน | เก็บใน `localStorage` ของ browser ผู้ใช้ (ไม่ต้องมีระบบ login) |
+| ⚠️ Missing | ไฟล์หายจาก OneDrive |
+| ⚪ Superseded | ไฟล์ Rev เก่าที่ยังอยู่ใน OneDrive |
 
 ---
 
-## 5. Pipeline สำหรับ PDF
+## 6. Pipeline ประมวลผล PDF (ใน GAS)
 
 ```mermaid
 flowchart LR
-    A[ดาวน์โหลด PDF<br/>จาก Graph] --> B[เก็บสำเนาลง<br/>Object Storage]
-    B --> C[PyMuPDF<br/>แตกข้อความ]
-    C --> D{ข้อความไทย<br/>อ่านได้?}
-    D -->|ใช่| F[Index ลง Meilisearch]
-    D -->|ไม่ / เป็นภาพสแกน| E[OCR Tesseract<br/>tha+eng]
-    E --> F
-    B --> G[สร้าง thumbnail<br/>หน้าแรก]
+    A[ดาวน์โหลด PDF<br/>จาก Graph] --> B[บันทึกสำเนาลง<br/>Drive /versions]
+    B --> C[Drive API แปลงเป็น<br/>Google Docs + OCR ไทย]
+    C --> D[อ่านข้อความ<br/>DocumentApp]
+    D --> E[บันทึก .txt ลง Drive<br/>ลบ Google Doc ชั่วคราว]
+    E --> F[อัปเดต search index]
 ```
 
-### 5.1 ปัญหาที่พบบ่อยกับ PDF ภาษาไทย
-- **สระ/วรรณยุกต์เพี้ยน หรือได้ตัวอักษรแปลกๆ** เมื่อแตกข้อความ เกิดจากฟอนต์ใน PDF ไม่มีตาราง ToUnicode → ตรวจด้วย heuristic (สัดส่วนอักขระไทยที่ถูกต้อง / อักขระขยะ) ถ้าต่ำกว่าเกณฑ์ให้ OCR แทน
-- **PDF สแกน** ไม่มีข้อความเลย → OCR อัตโนมัติ
-- OCR ช้า (~2–5 วินาที/หน้า) → ทำในคิวแยก ไฟล์ค้นจากชื่อได้ทันที ส่วนค้นจากเนื้อหาจะพร้อมหลัง OCR เสร็จ
-
-### 5.2 การดูและเปรียบเทียบ PDF
-- **Preview:** เปิดใน PDF.js บนเว็บโดยตรง (ไฟล์มาจาก Object Storage ผ่าน API ของเรา ไม่ต้องพึ่งลิงก์ OneDrive)
-- **เปรียบเทียบ 2 เวอร์ชัน:**
-  - **เทียบข้อความ** — ไฮไลต์บรรทัดที่เพิ่ม/ลบ
-  - **เทียบภาพทีละหน้า** — render หน้า PDF เป็นภาพแล้ววางคู่กัน / overlay ไฮไลต์จุดต่าง (เหมาะกับเอกสารที่มีตาราง แบบฟอร์ม หรือรูป)
-  - สรุปสั้นๆ: "เปลี่ยน 3 หน้า: หน้า 2, 5, 7"
-
----
-
-## 6. Data Model (PostgreSQL)
-
-```mermaid
-erDiagram
-    SOURCE ||--o{ SOURCE_FILE : contains
-    DOCUMENT ||--o{ SOURCE_FILE : "matched to"
-    DOCUMENT ||--o{ VERSION : has
-    SOURCE_FILE ||--o{ VERSION : "content of"
-    CATEGORY ||--o{ DOCUMENT : groups
-    DOCUMENT }o--o{ TAG : tagged
-    USER ||--o{ DOCUMENT_VIEW : ""
-    VERSION ||--o{ DOCUMENT_VIEW : ""
-    USER }o--o{ DOCUMENT : follows
-
-    SOURCE {
-        uuid id PK
-        text name
-        text share_url
-        text drive_id
-        text item_id
-        text kind "file | folder"
-        text status "ok | link_broken | error"
-        timestamptz last_synced_at
-        text last_error
-    }
-    SOURCE_FILE {
-        uuid id PK
-        uuid source_id FK
-        uuid document_id FK
-        text drive_item_id "UNIQUE"
-        text file_name
-        text folder_path
-        text ctag
-        text quick_xor_hash
-        text parsed_rev
-        boolean is_current
-        boolean is_missing
-    }
-    DOCUMENT {
-        uuid id PK
-        text doc_key "base name normalized"
-        text title
-        uuid category_id FK
-        text current_rev
-        uuid current_version_id FK
-        timestamptz first_seen_at
-        timestamptz last_revised_at
-        timestamptz last_updated_at
-        text status "active | missing | needs_review"
-    }
-    VERSION {
-        uuid id PK
-        uuid document_id FK
-        uuid source_file_id FK
-        int version_no
-        text rev_label "2 / null"
-        text change_type "initial | revised | updated"
-        text content_hash
-        timestamptz file_modified_at
-        text modified_by
-        bigint size_bytes
-        int page_count
-        text storage_path
-        text text_path
-        text extract_method "text | ocr"
-        text note
-    }
-    CATEGORY {
-        uuid id PK
-        text name
-        uuid parent_id
-    }
-    TAG {
-        uuid id PK
-        text name
-    }
-    USER {
-        uuid id PK
-        text entra_oid
-        text email
-        text display_name
-        text role
-    }
-    DOCUMENT_VIEW {
-        uuid user_id FK
-        uuid version_id FK
-        timestamptz viewed_at
-    }
-```
-
-แนวคิดสำคัญ: **SOURCE_FILE** = ไฟล์จริงแต่ละไฟล์ใน OneDrive (หลายไฟล์อาจเป็นเอกสารเดียวกันคนละ Rev), **DOCUMENT** = เอกสารเชิงตรรกะที่ผู้ใช้เห็น, **VERSION** = ทุกครั้งที่เนื้อหาเปลี่ยน
-
-Index สำคัญ: `source_file(drive_item_id) UNIQUE`, `document(doc_key)`, `version(document_id, version_no) UNIQUE`, `document(last_updated_at DESC)`
-
----
-
-## 7. ระบบค้นหา
-
-### 7.1 Index ใน Meilisearch (`documents`) — 1 record ต่อ 1 เอกสาร (เวอร์ชันปัจจุบัน)
-```json
-{
-  "id": "doc uuid",
-  "title": "ขั้นตอนการตรวจรับวัตถุดิบ",
-  "file_name": "ขั้นตอนการตรวจรับวัตถุดิบ Rev.2.pdf",
-  "folder_path": "QA/Procedures",
-  "category": "Procedure",
-  "tags": ["QC", "Incoming"],
-  "content": "ข้อความจาก PDF (ตัดไม่เกิน ~200KB)",
-  "current_rev": "2",
-  "last_updated_at": 1761264000,
-  "change_badge": "revised",
-  "page_count": 12
+```javascript
+// ต้องเปิด Advanced Service: Drive API v3
+function extractText_(pdfBlob, name) {
+  const doc = Drive.Files.create(
+    { name: `_tmp_${name}`, mimeType: MimeType.GOOGLE_DOCS },
+    pdfBlob,
+    { ocrLanguage: 'th' }
+  );
+  try {
+    return DocumentApp.openById(doc.id).getBody().getText();
+  } finally {
+    Drive.Files.remove(doc.id);
+  }
 }
 ```
-- `searchableAttributes` เรียงตามน้ำหนัก: `title` → `file_name` → `tags` → `folder_path` → `content`
-- `filterableAttributes`: `category`, `tags`, `folder_path`, `change_badge`, `last_updated_at`
-- `sortableAttributes`: `last_updated_at`, `title`
-- เปิด highlight + crop เพื่อแสดงข้อความรอบคำที่ค้นเจอ และบอก **หมายเลขหน้า** ที่พบ (เก็บข้อความแยกหน้าไว้ใน index ย่อย `pages` เพื่อกดแล้วกระโดดไปหน้านั้นใน PDF.js)
 
-### 7.2 เนื่องจากไม่มีเลขเอกสาร
-- ใช้ **โฟลเดอร์ใน OneDrive เป็นหมวดหมู่เริ่มต้น** อัตโนมัติ (Admin ปรับ/เพิ่ม tag ได้)
-- มีค้นหาแบบพิมพ์แล้วแนะนำทันที (search-as-you-type) จากชื่อเอกสาร
+**ข้อจำกัดที่ต้องทดสอบกับไฟล์จริง:**
+- การแปลง PDF → Google Docs มีขีดจำกัด (เอกสาร Google ระบุไว้ประมาณ **2 MB / 10 หน้าแรก** สำหรับ OCR) → ถ้า PDF ยาวกว่านั้น ใช้ไลบรารี **pdf-lib** (pure JavaScript รันใน GAS ได้) ตัด PDF เป็นชุดละ 10 หน้า แล้วแปลงทีละชุด — ได้ช่วงหน้าที่พบคำค้นมาด้วย ("พบในหน้า 11–20")
+- OCR ของ Google อ่านภาษาไทยได้ดีทั้ง PDF แบบพิมพ์และแบบสแกน และแก้ปัญหาสระ/วรรณยุกต์เพี้ยนจากฟอนต์ใน PDF ไปด้วยในตัว
+- งานนี้ใช้เวลา ~5–20 วินาที/ไฟล์ → ทำเป็นคิว ประมวลผลรอบละไม่กี่ไฟล์ ไม่ให้เกิน 6 นาที
 
 ---
 
-## 8. API (REST)
+## 7. ฐานข้อมูล (Google Sheets)
 
-| Method | Path | คำอธิบาย |
+1 Spreadsheet แบ่งเป็น sheet ละตาราง (แถวแรกเป็นหัวคอลัมน์):
+
+| Sheet | คอลัมน์ |
+|---|---|
+| **Sources** | `id`, `name`, `share_url`, `drive_id`, `item_id`, `kind`, `status`, `last_synced_at`, `last_error` |
+| **Files** | `id`, `source_id`, `document_id`, `drive_item_id`, `file_name`, `folder_path`, `ctag`, `hash`, `parsed_rev`, `is_current`, `is_missing`, `web_url` |
+| **Documents** | `id`, `doc_key`, `title`, `category`, `tags`, `current_rev`, `current_version_id`, `first_seen_at`, `last_revised_at`, `last_updated_at`, `status` |
+| **Versions** | `id`, `document_id`, `file_id`, `version_no`, `rev_label`, `change_type` (initial/revised/updated), `file_modified_at`, `modified_by`, `size_bytes`, `pdf_drive_id`, `text_drive_id`, `note` |
+| **Queue** | `file_id`, `task` (process/ocr), `attempts`, `last_error`, `created_at` |
+| **ReviewQueue** | `file_id`, `candidate_document_id`, `similarity`, `resolved` |
+| **Settings** | `key`, `value` (เช่น `badge_days`, `rev_patterns`, `admin_emails`, `teams_webhook_url`) |
+| **Followers** | `email`, `document_id` |
+| **Logs** | `time`, `level`, `message` |
+
+แนวทาง:
+- อ่านทั้งชีตครั้งเดียวด้วย `getDataRange().getValues()` แล้วทำงานใน memory, เขียนกลับเป็นก้อนด้วย `setValues()` (เร็วกว่าเขียนทีละ cell มาก)
+- เขียนโมดูล `Repo.gs` ห่อการอ่าน/เขียนชีตไว้ ถ้าวันหน้าต้องย้ายฐานข้อมูลจะแก้แค่ไฟล์เดียว
+- ข้อความเต็มของ PDF **ไม่เก็บในชีต** (1 cell ได้ไม่เกิน 50,000 ตัวอักษร) เก็บเป็นไฟล์ `.txt` ใน Drive
+
+### โครงสร้างโฟลเดอร์ Google Drive
+```
+Document Schematic/
+├── DocumentSchematic DB        (Google Sheets)
+├── versions/                   สำเนา PDF ทุกเวอร์ชัน  {versionId}.pdf
+├── text/                       ข้อความที่แตกได้       {versionId}.txt
+└── index/search-index.json.gz  ไฟล์ index สำหรับค้นหา
+```
+
+---
+
+## 8. ระบบค้นหา
+
+### 8.1 ค้นหาฝั่ง browser (เร็ว ไม่กิน quota)
+- หลัง sync แต่ละรอบ GAS สร้าง **search index** 1 ไฟล์: รายการเอกสารปัจจุบันพร้อม `title`, `file_name`, `folder`, `tags`, `rev`, `updated`, `badge` และ `content` (ข้อความ ตัดไม่เกิน ~20,000 ตัวอักษร/เอกสาร) → บีบอัดด้วย `Utilities.gzip()` เก็บใน Drive
+- หน้าเว็บโหลด index ครั้งแรกครั้งเดียว (เก็บ cache ใน `localStorage` / IndexedDB ตามเลขเวอร์ชัน index) แล้วค้นหาใน browser ทันทีขณะพิมพ์
+- **ค้นแบบ substring** (`includes`) — เหมาะกับภาษาไทยที่ไม่มีช่องว่างระหว่างคำ ไม่ต้องตัดคำ
+- ให้น้ำหนัก: ตรงกับชื่อเอกสาร > ชื่อไฟล์/tag > โฟลเดอร์ > เนื้อหา
+- normalize ก่อนค้น: ตัวเล็ก, ตัดช่องว่างซ้ำ, Unicode NFC (กันสระ/วรรณยุกต์ที่พิมพ์ลำดับต่างกัน)
+- แสดงข้อความรอบคำที่เจอ + highlight
+
+ขนาดโดยประมาณ: 1,000 เอกสาร × 20,000 ตัวอักษร ≈ 60 MB (UTF-8) → gzip เหลือ ~8–12 MB โหลดครั้งแรกครั้งเดียว
+
+### 8.2 ถ้าเอกสารเยอะเกิน (> ~2,000 ไฟล์)
+แยก index เป็น 2 ชั้น: index เล็ก (ชื่อ/metadata) โหลดทันที + ค้นเนื้อหาฝั่ง server ด้วย Drive full-text search (`DriveApp.searchFiles('fullText contains "…"')`) บนไฟล์ `.txt`
+
+---
+
+## 9. หน้าเว็บ (GAS HtmlService)
+
+ไฟล์ HTML แยกเป็นส่วนด้วย `HtmlService.createTemplateFromFile()` + `<?!= include('...') ?>`, ใช้ Tailwind และไลบรารีจาก CDN
+
+1. **หน้าแรก** — ช่องค้นหา, "อัปเดตล่าสุด" (🔄 / 📝 / 🆕), หมวดตามโฟลเดอร์
+2. **ผลค้นหา / รายการ** — ชื่อเอกสาร | `Rev.2` | วันที่อัปเดต | ป้าย | หมวด, filter ตามหมวด/ป้าย/วันที่, ข้อความที่พบ + highlight
+3. **รายละเอียดเอกสาร**
+   - ดู PDF ด้วย **PDF.js** (GAS ส่งไฟล์เป็น base64 จากสำเนาใน Drive)
+   - timeline ประวัติ Rev → Version, ผู้แก้ไข, วันที่, หมายเหตุ
+   - ปุ่ม: เปิดใน OneDrive, ดาวน์โหลด, ติดตาม (ใส่อีเมล), **เปรียบเทียบกับเวอร์ชันก่อน**
+4. **เปรียบเทียบ** — โหมดข้อความ (ไลบรารี `jsdiff` ไฮไลต์ส่วนเพิ่ม/ลบ) และโหมดวางคู่ PDF ซ้าย/ขวา ด้วย PDF.js
+5. **Admin** (เฉพาะอีเมลที่อยู่ใน `admin_emails`) — เพิ่ม/ลบลิงก์ OneDrive, สั่ง sync, ดูสถานะ/error, คิวจับคู่, แก้หมวด/tag/หมายเหตุ
+
+### การเข้าใช้งาน
+| ตัวเลือก | การตั้งค่า Deploy | เหมาะกับ |
 |---|---|---|
-| GET | `/api/documents?q=&category=&tag=&badge=revised&sort=` | ค้นหา / แสดงรายการ |
-| GET | `/api/documents/:id` | รายละเอียด + เวอร์ชันปัจจุบัน |
-| GET | `/api/documents/:id/versions` | ประวัติ Rev/Version ทั้งหมด |
-| GET | `/api/versions/:id/file` | สตรีม PDF ของเวอร์ชันนั้น (สำหรับ PDF.js / ดาวน์โหลด) |
-| GET | `/api/versions/:id/thumbnail` | รูปหน้าแรก |
-| GET | `/api/documents/:id/compare?from=&to=&mode=text\|visual` | เปรียบเทียบ 2 เวอร์ชัน |
-| POST | `/api/versions/:id/view` | บันทึกว่าผู้ใช้เปิดอ่านแล้ว |
-| POST/DELETE | `/api/documents/:id/follow` | ติดตาม / เลิกติดตาม |
-| GET | `/api/updates?since=` | ฟีดเอกสารที่ Revised/Updated ล่าสุด |
-| **Admin** | | |
-| POST | `/api/admin/sources` `{ share_url }` | เพิ่มลิงก์ OneDrive (ตรวจลิงก์ + แสดงตัวอย่างไฟล์ก่อนยืนยัน) |
-| POST | `/api/admin/sources/:id/sync` | สั่ง sync ทันที |
-| GET | `/api/admin/sources` | สถานะ sync, error |
-| GET | `/api/admin/review-queue` | รายการไฟล์ที่ระบบจับคู่ไม่แน่ใจ |
-| POST | `/api/admin/source-files/:id/assign` `{ document_id \| new }` | ยืนยัน/แก้การจับคู่ |
-| PATCH | `/api/admin/documents/:id` | แก้ชื่อ, หมวด, tag, หมายเหตุการแก้ไข |
-| PUT | `/api/admin/settings/rev-patterns` | ตั้งค่า regex เลข Rev |
+| เปิดได้ทุกคนที่มีลิงก์ | Execute as: Me, Access: **Anyone** | ผู้ใช้ไม่มีบัญชี Google (ใช้ Microsoft) — ส่วน Admin ป้องกันด้วยรหัสผ่านใน Script Properties |
+| ต้อง login Google | Access: **Anyone with Google account** | ทุกคนมีบัญชี Google — ตรวจ `Session.getActiveUser()` ได้ |
+
+> ทางเลือกเพิ่มเติม (ฟรี): ย้ายหน้าเว็บไปไว้บน **GitHub Pages / Cloudflare Pages** แล้วเรียก GAS เป็น JSON API (`doGet`/`doPost` + `ContentService`) — ได้ URL สวย โหลดเร็วขึ้น และใช้ **login ด้วยบัญชี Microsoft (MSAL.js)** ได้ ทำใน Phase หลังเมื่อระบบหลักเสถียรแล้ว
 
 ---
 
-## 9. หน้าจอ (UI)
-
-1. **หน้าแรก**
-   - ช่องค้นหาขนาดใหญ่ (แนะนำชื่อขณะพิมพ์)
-   - **"อัปเดตล่าสุด"** — ไทม์ไลน์เอกสารที่ 🔄 Revised / 📝 Updated / 🆕 New ล่าสุด
-   - หมวดหมู่ตามโฟลเดอร์
-2. **หน้าค้นหา / รายการเอกสาร**
-   - การ์ดหรือตาราง: thumbnail | ชื่อเอกสาร | `Rev.2` | วันที่อัปเดต | ป้ายสถานะ | หมวด
-   - Filter: หมวด, tag, สถานะ (Revised / Updated / New), ช่วงวันที่
-   - ข้อความที่ค้นเจอ + "พบในหน้า 3, 7"
-3. **หน้ารายละเอียดเอกสาร**
-   - PDF viewer (PDF.js) เต็มจอ
-   - แถบด้านข้าง: ประวัติแบบ timeline (Rev → Version พร้อมวันที่และผู้แก้ไข)
-   - ปุ่ม: เปิดใน OneDrive, ดาวน์โหลด, ติดตาม, **เปรียบเทียบกับเวอร์ชันก่อนหน้า**
-4. **หน้าเปรียบเทียบ** — วางคู่ซ้าย/ขวา, โหมดข้อความ / โหมดภาพ, ปุ่มไปยังหน้าที่เปลี่ยน
-5. **หน้า Admin** — จัดการลิงก์ OneDrive, สถานะ sync, คิวจับคู่, หมวด/tag, ตั้งค่า regex
+## 10. แจ้งเตือน
+- ผู้ใช้กด "ติดตาม" + ใส่อีเมล → เมื่อเอกสาร 🔄 Revised / 📝 Updated ส่งอีเมลผ่าน `MailApp`
+- รวมเป็น **อีเมลสรุปวันละครั้ง** เพื่อไม่ให้เกิน 100 ผู้รับ/วัน
+- โพสต์เข้า **Microsoft Teams channel** ผ่าน Workflows webhook (ฟรี ไม่จำกัดผู้รับ) — เหมาะกว่าอีเมลถ้าทีมใช้ Teams
 
 ---
 
-## 10. ความปลอดภัย
-- Login ผ่าน Entra ID (OIDC) จำกัดเฉพาะบัญชีใน tenant องค์กร
-- Role: `viewer`, `editor` (แก้ metadata/หมายเหตุ), `admin` (จัดการลิงก์และการจับคู่)
-- ผู้ใช้ไม่ต้องเข้าถึง OneDrive โดยตรง: ไฟล์ส่งผ่าน API ของเราหลังตรวจ login แล้ว
-- `client_secret` เก็บใน environment / secret manager ไม่ commit ลง repo และหมุนเวียนก่อนหมดอายุ
-- ข้อควรระวัง: ลิงก์สาธารณะ (Anyone with the link) ใครได้ลิงก์ก็เปิดได้ — ระบบนี้ไม่จำเป็นต้องใช้ลิงก์แบบสาธารณะ ใช้ลิงก์แบบ "People in your organization" ก็ได้ เพราะ App มีสิทธิ์อ่านผ่าน Graph อยู่แล้ว แนะนำให้พิจารณาเปลี่ยนเพื่อความปลอดภัยของเอกสาร
-
----
-
-## 11. Deployment
+## 11. โครงสร้างโค้ดใน repo (ใช้ clasp)
 
 ```
-docker-compose.yml
-├── web          (Next.js)
-├── api          (FastAPI)
-├── worker       (Python: sync + PDF extract)
-├── worker-ocr   (Python + Tesseract tha — แยกเพราะใช้ CPU สูง)
-├── scheduler    (สั่ง sync ทุก 15 นาที)
-├── postgres
-├── redis
-├── meilisearch
-└── minio
+Document_Schematic/
+├── docs/SYSTEM_DESIGN.md
+├── gas/                      ← root ของ clasp
+│   ├── appsscript.json       (V8, Advanced Drive API, OAuth scopes, webapp config)
+│   ├── Config.gs             อ่าน Script Properties / Settings
+│   ├── Graph.gs              token, graphGet_, resolveShareUrl_, listFolder_, download_
+│   ├── Repo.gs               อ่าน/เขียน Google Sheets
+│   ├── RevParser.gs          parseFileName_, similarity
+│   ├── Sync.gs               syncAll (trigger), เทียบ cTag, จับคู่เอกสาร
+│   ├── Processor.gs          ดาวน์โหลด, เก็บสำเนา, OCR, สร้าง Version
+│   ├── SearchIndex.gs        สร้าง search-index.json.gz
+│   ├── Notify.gs             อีเมล / Teams
+│   ├── Api.gs                ฟังก์ชันที่หน้าเว็บเรียก
+│   ├── WebApp.gs             doGet, include
+│   ├── Setup.gs              สร้าง Sheet/โฟลเดอร์/trigger ครั้งแรก
+│   └── ui/                   Index.html, Styles.html, App.js.html, Admin.html
+├── tests/                    unit test ของ RevParser (รันด้วย Node)
+└── .clasp.json               (scriptId — ไม่มีความลับ)
 ```
-- เนื่องจากใช้ Polling จึง **ไม่ต้องมี public endpoint สำหรับ webhook** — วางบนเซิร์ฟเวอร์ภายในองค์กรได้ ขอแค่ออก internet ไปที่ `graph.microsoft.com` และ `login.microsoftonline.com`
-- สำรองข้อมูล PostgreSQL + MinIO รายวัน
+- เขียนโค้ดในเครื่อง → `clasp push` ขึ้น GAS → `clasp deploy`
+- ตรรกะที่ไม่พึ่ง GAS (RevParser, การจับคู่) เขียนให้ทดสอบด้วย Node ได้
 
 ---
 
@@ -414,15 +358,18 @@ docker-compose.yml
 
 | Phase | งาน | ผลลัพธ์ |
 |---|---|---|
-| **1. MVP** | ลงทะเบียน Entra App, เพิ่มลิงก์โฟลเดอร์/ไฟล์, Polling sync, แยก Rev จากชื่อไฟล์ + จับคู่เอกสาร, เก็บสำเนา PDF, ค้นจากชื่อ, ป้าย Revised/Updated/New, หน้า list + PDF viewer + ประวัติ | ใช้งานจริงได้ |
-| **2. Search เนื้อหา** | แตกข้อความ PDF ไทย, Meilisearch, highlight + เลขหน้า, OCR สำหรับ PDF สแกน | ค้นจากเนื้อหาได้ |
-| **3. เปรียบเทียบ + Admin** | เทียบข้อความ/ภาพ, คิวจับคู่, สถานะยังไม่ได้อ่าน, หมายเหตุการแก้ไข | ตรวจสอบการเปลี่ยนแปลงได้ละเอียด |
-| **4. แจ้งเตือน** | ติดตามเอกสาร, แจ้งเตือน Email / Microsoft Teams, สรุปรายสัปดาห์ | ผู้ใช้รู้ทันทีเมื่อเอกสารเปลี่ยน |
+| **0. เตรียม** | สร้าง Gmail กลาง, ขอ IT ลงทะเบียน Entra App, ทดสอบเรียก Graph จาก GAS, ทดสอบ OCR กับ PDF จริง 3–5 ไฟล์ | ยืนยันว่าเส้นทางหลักใช้ได้ |
+| **1. MVP** | Setup Sheets/Drive, เพิ่มลิงก์โฟลเดอร์, sync ทุก 30 นาที, แยก Rev + จับคู่, เก็บสำเนา PDF, หน้า list + ค้นจากชื่อ + ป้าย, ดู PDF + ประวัติ | ใช้งานจริงได้ |
+| **2. ค้นเนื้อหา** | OCR ผ่าน Drive, ตัด PDF ยาวด้วย pdf-lib, search index ฝั่ง browser + highlight | ค้นจากเนื้อหาภาษาไทยได้ |
+| **3. เปรียบเทียบ + Admin** | เทียบข้อความ/วางคู่ PDF, คิวจับคู่, สถานะยังไม่ได้อ่าน, หมายเหตุ | ตรวจสอบการเปลี่ยนแปลงได้ละเอียด |
+| **4. แจ้งเตือน + ขยาย** | ติดตาม + อีเมลสรุป / Teams, (ทางเลือก) ย้ายหน้าเว็บไป GitHub Pages + Microsoft login | ใช้งานสะดวกขึ้น |
 
 ---
 
-## 13. สิ่งที่ต้องเตรียมก่อนเริ่ม
-1. ติดต่อ IT Admin ของ Microsoft 365 เพื่อ **ลงทะเบียน App + Grant admin consent** สิทธิ์ `Files.Read.All` (และ `Sites.Read.All` ถ้าใช้ SharePoint)
-2. ตัวอย่างลิงก์ OneDrive จริง 1–2 ลิงก์ และ **ตัวอย่างชื่อไฟล์ 20–30 ชื่อ** เพื่อทดสอบ regex เลข Rev
-3. ตัวอย่าง PDF 3–5 ไฟล์ (มีทั้งแบบพิมพ์และแบบสแกน) เพื่อทดสอบการแตกข้อความไทย
-4. เซิร์ฟเวอร์สำหรับ deploy (on-prem หรือ cloud) — สเปกเริ่มต้น 4 vCPU / 8 GB RAM / ดิสก์ตามปริมาณ PDF × 3 เท่า
+## 13. สิ่งที่ต้องเตรียม
+1. **Gmail กลาง** สำหรับเป็นเจ้าของระบบ
+2. **IT Admin ของ Microsoft 365** ลงทะเบียน App ใน Entra ID + Grant admin consent `Files.Read.All` → ได้ `Tenant ID`, `Client ID`, `Client Secret` (ฟรี) — ถ้าไม่ได้ ใช้ระดับ 2 หรือ 3 ตามข้อ 4.1
+3. ลิงก์โฟลเดอร์ OneDrive จริง 1–2 ลิงก์
+4. ตัวอย่างชื่อไฟล์ 20–30 ชื่อ และ PDF 3–5 ไฟล์ (ทั้งแบบพิมพ์/สแกน, มีไฟล์ยาวเกิน 10 หน้าอย่างน้อย 1 ไฟล์)
+
+> **ความปลอดภัย:** ระบบที่ใช้ Graph API (ระดับ 1–2) ไม่จำเป็นต้องใช้ลิงก์แบบ "Anyone with the link" — ใช้ "People in your organization" ได้ ปลอดภัยกว่า
