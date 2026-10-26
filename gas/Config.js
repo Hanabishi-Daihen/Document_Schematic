@@ -1,12 +1,11 @@
 /**
  * ค่าคงที่ของระบบ, โครงสร้างตาราง (sheet) และการอ่านค่าตั้งค่า
  *
- * Script Properties ที่ใช้ (Project Settings → Script Properties):
- *   SPREADSHEET_ID     ไม่บังคับถ้า script ผูกกับ Google Sheet (Extensions → Apps Script)
+ * Script Properties ที่ใช้ (ตั้งผ่านเมนู "Document Schematic → ตั้งค่า" ใน Google Sheet):
  *   ADMIN_PASSWORD     รหัสผ่านหน้า Admin
  *   TENANT_ID, CLIENT_ID, CLIENT_SECRET   ข้อมูล App ใน Microsoft Entra ID
- *   TEST_SOURCE        (ทดสอบ) ลิงก์ OneDrive สำหรับ testGraphConnection
- *   TEST_PDF_DRIVE_ID  (ทดสอบ) ID ของ PDF ใน Google Drive สำหรับ testOcr
+ *   SPREADSHEET_ID     setup() ตั้งให้เอง
+ *   TEST_SOURCE, TEST_PDF_DRIVE_ID  (ไม่บังคับ) ค่าทดสอบเมื่อรันจาก editor
  *   ROOT_FOLDER_ID, VERSIONS_FOLDER_ID, TEXT_FOLDER_ID, INDEX_FOLDER_ID, INDEX_FILE_ID  — setup() สร้างให้เอง
  */
 

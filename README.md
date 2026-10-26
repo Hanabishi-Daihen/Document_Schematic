@@ -10,6 +10,8 @@ Web app สำหรับรวมเอกสาร PDF จาก OneDrive อ
 Stack: Google Apps Script · Google Sheets (ฐานข้อมูล) · Google Drive (เก็บไฟล์ + OCR) · Microsoft Graph API
 
 ## เริ่มต้น
-- **ติดตั้ง:** [docs/SETUP.md](docs/SETUP.md)
+- **ติดตั้ง:** วาง 3 ไฟล์จาก [`dist/`](dist) ลงใน Apps Script ของ Google Sheet แล้วใช้เมนู **📄 Document Schematic** — ดู [docs/SETUP.md](docs/SETUP.md)
 - **การออกแบบระบบ:** [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)
-- **ทดสอบโค้ด (Node 18+):** `npm test`
+- **นักพัฒนา (Node 18+):** `npm install` → `npm test` → `npm run build`
+
+หน้าเว็บไม่โหลดอะไรจาก CDN ภายนอก — CSS, ฟอนต์ และ JavaScript ฝังอยู่ใน `dist/Index.html`, PDF แสดงด้วย Google Drive viewer

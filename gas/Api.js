@@ -68,6 +68,7 @@ function getDocumentDetail(docId) {
         textStatus: v.text_status,
         note: v.note,
         isCurrent: v.id === d.current_version_id,
+        previewUrl: v.pdf_drive_id ? `https://drive.google.com/file/d/${v.pdf_drive_id}/preview` : '',
         webUrl: f.web_url || '',
         fileStatus: f.status || '',
       };

@@ -61,6 +61,11 @@ function processFile_(db, file) {
   const blob = downloadItem_(file.drive_id, file.drive_item_id);
   blob.setName(`${versionId}.${parsed.ext || 'bin'}`);
   const stored = DriveApp.getFolderById(props_().getProperty('VERSIONS_FOLDER_ID')).createFile(blob);
+  try {
+    sharePreview_(stored); // ให้ Google Drive viewer ในหน้าเว็บเปิดได้ (ดู Setup.js)
+  } catch (err) {
+    log_('WARN', `เปิดสิทธิ์ดูไฟล์ "${item.name}" ไม่ได้: ${err.message}`);
+  }
 
   let textDriveId = '';
   let textStatus = 'skipped';

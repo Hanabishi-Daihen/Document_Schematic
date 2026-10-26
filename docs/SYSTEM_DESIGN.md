@@ -40,7 +40,7 @@ flowchart LR
 
 | ส่วนประกอบ | ใช้อะไร (ฟรี) | หน้าที่ |
 |---|---|---|
-| หน้าเว็บ | **GAS HtmlService** (HTML + Tailwind CDN + JavaScript) | ค้นหา, รายการเอกสาร, ดู PDF, ประวัติ, หน้า Admin |
+| หน้าเว็บ | **GAS HtmlService** — HTML ไฟล์เดียวที่ฝัง CSS (Tailwind compile แล้ว), ฟอนต์ และ JavaScript ไว้ครบ **ไม่โหลดจาก CDN** | ค้นหา, รายการเอกสาร, ดู PDF, ประวัติ, หน้า Admin |
 | Backend | **GAS** (`doGet`, ฟังก์ชันที่เรียกผ่าน `google.script.run`) | API ให้หน้าเว็บ |
 | Sync Job | **GAS time-driven trigger** | ดึงข้อมูลจาก OneDrive, แยก Rev, สร้างเวอร์ชัน |
 | ฐานข้อมูล | **Google Sheets** (แยก sheet ตามตาราง) | metadata เอกสาร/เวอร์ชัน |
@@ -48,7 +48,9 @@ flowchart LR
 | แตกข้อความ / OCR | **Drive API (Advanced Service)** แปลง PDF → Google Docs `ocrLanguage: 'th'` | ได้ข้อความไทยสำหรับค้นหา |
 | เชื่อม OneDrive | **Microsoft Graph API** ผ่าน `UrlFetchApp` (การลงทะเบียน App ใน Entra ID ไม่มีค่าใช้จ่าย) | อ่านรายการไฟล์ + ดาวน์โหลด |
 | แจ้งเตือน | **MailApp** / **Teams Workflows webhook** | แจ้งเมื่อเอกสาร Revised |
-| จัดการโค้ด | **clasp** (CLI ของ Google) + GitHub repo นี้ | เขียนโค้ดในเครื่อง → push ขึ้น GAS |
+| ดู PDF | **Google Drive viewer** (`drive.google.com/file/d/<id>/preview`) | แสดงสำเนา PDF ในหน้าเว็บ ไม่ต้องใช้ PDF.js |
+| ติดตั้ง/ตั้งค่า | **เมนูใน Google Sheet** (`onOpen`) | ติดตั้ง, ตั้งค่า, sync, ทดสอบ โดยไม่ต้องเข้า editor |
+| จัดการโค้ด | ซอร์สใน `gas/` → `npm run build` → `dist/` 3 ไฟล์ (วางใน Apps Script หรือ `clasp push`) | |
 
 **บัญชีที่ใช้:** สร้าง Gmail กลางของหน่วยงาน 1 บัญชี (เช่น `docs.yourteam@gmail.com`) เป็นเจ้าของ Script, Sheet และโฟลเดอร์ Drive เพื่อไม่ผูกกับบัญชีส่วนตัวของใคร
 
@@ -299,20 +301,20 @@ Document Schematic/
 
 ## 9. หน้าเว็บ (GAS HtmlService)
 
-ไฟล์ HTML แยกเป็นส่วนด้วย `HtmlService.createTemplateFromFile()` + `<?!= include('...') ?>`, ใช้ Tailwind และไลบรารีจาก CDN
+ซอร์สแยกเป็น `gas/ui/Index.html`, `Styles.html`, `App.js.html` — ตอน build จะรวมเป็น `dist/Index.html` ไฟล์เดียว พร้อม Tailwind CSS ที่ compile แล้ว และฟอนต์ Noto Serif Thai / IBM Plex Sans Thai แบบ base64 (~80 KB) **หน้าเว็บไม่เรียก CDN ภายนอกเลย**
 
 **Visual design:** ตาม [docs/DESIGN.md](DESIGN.md) — พื้นครีม (`canvas #faf9f5`), ปุ่มหลักสี coral (`primary #cc785c`), หัวข้อตัวอักษร serif น้ำหนัก 400 (Noto Serif Thai แทน Copernicus เพราะต้องรองรับภาษาไทย), เนื้อหา Inter + IBM Plex Sans Thai, พื้นผิวสีเข้ม (`surface-dark #181715`) สำหรับตัวแสดง PDF, กล่อง Log และ footer
-- token สีอยู่ใน `tailwind.config` (`ui/Index.html`) และ CSS variables (`ui/Styles.html`) — แก้สีที่สองจุดนี้เท่านั้น
+- token สีอยู่ใน `tailwind.config.js` และ CSS variables (`gas/ui/Styles.html`) — แก้สีที่สองจุดนี้แล้ว `npm run build`
 - ป้ายสถานะ: Revised = coral, Updated = amber, New = teal, Missing = error
 - ใช้ไอคอนเอกสารของระบบเองแทนโลโก้ Anthropic ที่ไฟล์ DESIGN.md อ้างถึง
 
 1. **หน้าแรก** — ช่องค้นหา, "อัปเดตล่าสุด" (🔄 / 📝 / 🆕), หมวดตามโฟลเดอร์
 2. **ผลค้นหา / รายการ** — ชื่อเอกสาร | `Rev.2` | วันที่อัปเดต | ป้าย | หมวด, filter ตามหมวด/ป้าย/วันที่, ข้อความที่พบ + highlight
 3. **รายละเอียดเอกสาร**
-   - ดู PDF ด้วย **PDF.js** (GAS ส่งไฟล์เป็น base64 จากสำเนาใน Drive)
+   - ดู PDF ด้วย **Google Drive viewer** ใน iframe (สำเนา PDF ตั้งสิทธิ์ "ทุกคนที่มีลิงก์ดูได้" — ID ของไฟล์เดาไม่ได้); ปุ่มดาวน์โหลดดึงไฟล์ผ่าน `getVersionFile`
    - timeline ประวัติ Rev → Version, ผู้แก้ไข, วันที่, หมายเหตุ
    - ปุ่ม: เปิดใน OneDrive, ดาวน์โหลด, ติดตาม (ใส่อีเมล), **เปรียบเทียบกับเวอร์ชันก่อน**
-4. **เปรียบเทียบ** — โหมดข้อความ (ไลบรารี `jsdiff` ไฮไลต์ส่วนเพิ่ม/ลบ) และโหมดวางคู่ PDF ซ้าย/ขวา ด้วย PDF.js
+4. **เปรียบเทียบ** — โหมดข้อความ (ไลบรารี `jsdiff` ไฮไลต์ส่วนเพิ่ม/ลบ) และโหมดวางคู่ PDF ซ้าย/ขวา ด้วย Google Drive viewer 2 ช่อง
 5. **Admin** (เฉพาะอีเมลที่อยู่ใน `admin_emails`) — เพิ่ม/ลบลิงก์ OneDrive, สั่ง sync, ดูสถานะ/error, คิวจับคู่, แก้หมวด/tag/หมายเหตุ
 
 ### การเข้าใช้งาน
@@ -332,14 +334,15 @@ Document Schematic/
 
 ---
 
-## 11. โครงสร้างโค้ดใน repo (ใช้ clasp)
+## 11. โครงสร้างโค้ดใน repo
 
 ```
 Document_Schematic/
-├── docs/
-│   ├── SYSTEM_DESIGN.md
-│   └── SETUP.md              คู่มือติดตั้งทีละขั้น
-├── gas/                      ← root ของ clasp (ไฟล์ .js = .gs ใน Apps Script)
+├── dist/                     ← ไฟล์พร้อมวางใน Apps Script (สร้างด้วย npm run build ห้ามแก้ตรง)
+│   ├── Code.gs               โค้ดฝั่ง server ทั้งหมด
+│   ├── Index.html            หน้าเว็บ + CSS + ฟอนต์ + JS ไฟล์เดียว
+│   └── appsscript.json
+├── gas/                      ← ซอร์ส (ไฟล์ .js = .gs ใน Apps Script)
 │   ├── appsscript.json       V8, Advanced Drive API v3, OAuth scopes, webapp config
 │   ├── Config.js             โครงสร้างตาราง, ค่าตั้งค่า, Script Properties
 │   ├── Repo.js               class Table อ่าน/เขียน Google Sheets เป็นก้อน + Logs
@@ -349,16 +352,21 @@ Document_Schematic/
 │   ├── Processor.js          ดาวน์โหลด, เก็บสำเนา, OCR, สร้าง Version (initial/revised/updated/historical)
 │   ├── SearchIndex.js        สร้าง search-index.json.gz แบบเพิ่มเฉพาะส่วนที่เปลี่ยน
 │   ├── Api.js                ฟังก์ชันที่หน้าเว็บเรียก + ฟังก์ชัน Admin (ตรวจรหัสผ่าน)
-│   ├── WebApp.js             doGet, include_
-│   ├── Setup.js              setup() + ฟังก์ชันทดสอบ Phase 0
+│   ├── WebApp.js             doGet
+│   ├── Menu.js               เมนูใน Google Sheet + หน้าต่างตั้งค่า
+│   ├── Setup.js              setup() + ฟังก์ชันทดสอบ
 │   └── ui/                   Index.html, Styles.html, App.js.html
+├── scripts/build.js          รวม gas/ → dist/ (compile Tailwind, ฝังฟอนต์)
+├── tailwind.config.js        design tokens (docs/DESIGN.md)
 ├── tests/                    รันด้วย Node: npm test
 │   ├── gas-harness.js        จำลอง Sheets/Drive/UrlFetch/Graph ใน memory
 │   ├── revParser.test.js
-│   └── sync.test.js          ทดสอบ flow sync → revision ทั้งระบบ
-└── .clasp.json.example
+│   ├── sync.test.js          ทดสอบ flow sync → revision ทั้งระบบ
+│   └── build.test.js         dist/ ตรงกับซอร์ส, ไม่มี URL ภายนอก, Code.gs รันได้
+└── .clasp.json.example       rootDir = dist
 ```
-- เขียนโค้ดในเครื่อง → `npm test` → `clasp push` ขึ้น GAS → Deploy
+- ผู้ใช้ทั่วไป: วาง 3 ไฟล์จาก `dist/` แล้วใช้เมนูใน Google Sheet (ดู [SETUP.md](SETUP.md))
+- นักพัฒนา: แก้ `gas/` → `npm test` → `npm run build` → `clasp push` หรือวาง `dist/` ใหม่
 - โค้ดทั้งหมดรันกับ GAS จำลองใน Node ได้ (`tests/gas-harness.js`) จึงทดสอบ flow การ sync/จับคู่/สร้าง Revision ได้โดยไม่ต้องต่อ OneDrive จริง
 - แจ้งเตือน (Notify) อยู่ใน Phase 4
 

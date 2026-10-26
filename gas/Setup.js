@@ -1,9 +1,10 @@
 /**
- * ฟังก์ชันสำหรับรันจาก Apps Script editor (เลือกชื่อฟังก์ชันแล้วกด Run)
+ * ติดตั้งระบบและฟังก์ชันทดสอบ — เรียกได้จากเมนู "Document Schematic" ใน Google Sheet (Menu.js)
+ * หรือจาก Apps Script editor (เลือกชื่อฟังก์ชันแล้วกด Run)
  *   setup()               สร้าง sheet, โฟลเดอร์ใน Drive และ trigger — รันซ้ำได้ ไม่ลบข้อมูลเดิม
  *   testRevParser()       ทดสอบการแยกเลข Rev จากชื่อไฟล์
- *   testOcr()             ทดสอบแตกข้อความไทยจาก PDF (ตั้ง TEST_PDF_DRIVE_ID ก่อน)
- *   testGraphConnection() ทดสอบเชื่อม OneDrive (ตั้ง TENANT_ID, CLIENT_ID, CLIENT_SECRET, TEST_SOURCE ก่อน)
+ *   testOcr(fileId)       ทดสอบแตกข้อความไทยจาก PDF ใน Google Drive
+ *   testGraphConnection(link)  ทดสอบเชื่อม OneDrive
  *   syncNow()             (ใน Sync.js) sync ทันที
  */
 
@@ -20,7 +21,7 @@ function setup() {
     if (existing.filter(Boolean).length && existing.slice(0, headers.length).join() !== headers.join()) {
       throw new Error(`sheet "${name}" มีหัวคอลัมน์ไม่ตรงกับระบบ — เปลี่ยนชื่อ sheet เดิมก่อนแล้วรันใหม่`);
     }
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#efe9de');
     sheet.getRange(1, 1, sheet.getMaxRows(), headers.length).setNumberFormat('@');
     sheet.setFrozenRows(1);
   });
@@ -43,6 +44,7 @@ function setup() {
     const key = `${name.toUpperCase()}_FOLDER_ID`;
     p.setProperty(key, ensureFolder_(p.getProperty(key), root, name).getId());
   });
+  const sharingNote = shareVersionsForPreview_();
 
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === 'runScheduled')
@@ -51,14 +53,21 @@ function setup() {
   const minutes = getSettings_().syncIntervalMinutes;
   ScriptApp.newTrigger('runScheduled').timeBased().everyMinutes(minutes).create();
 
-  const warnings = [];
-  ['ADMIN_PASSWORD', 'TENANT_ID', 'CLIENT_ID', 'CLIENT_SECRET'].forEach((k) => {
-    if (!p.getProperty(k)) warnings.push(k);
-  });
+  const missingProps = ['ADMIN_PASSWORD', 'TENANT_ID', 'CLIENT_ID', 'CLIENT_SECRET'].filter((k) => !p.getProperty(k));
   log_('INFO', `setup เสร็จ: sync ทุก ${minutes} นาที, โฟลเดอร์ Drive: ${root.getUrl()}`);
   flushLogs_();
-  console.log(`✅ setup เสร็จ\nSheet: ${ss.getUrl()}\nโฟลเดอร์ Drive: ${root.getUrl()}\nTrigger: ทุก ${minutes} นาที`);
-  if (warnings.length) console.warn(`⚠️ ยังไม่ได้ตั้ง Script Properties: ${warnings.join(', ')}`);
+
+  const lines = [
+    '✅ ติดตั้งเสร็จแล้ว',
+    `• สร้าง/ตรวจ sheet ${Object.keys(SCHEMA).length} ตาราง`,
+    `• โฟลเดอร์เก็บไฟล์: ${root.getUrl()}`,
+    `• Sync อัตโนมัติทุก ${minutes} นาที`,
+  ];
+  if (sharingNote) lines.push(`⚠️ ${sharingNote}`);
+  if (missingProps.length) lines.push('', `ขั้นต่อไป: เมนู "2. ตั้งค่า" — ยังไม่ได้ใส่ ${missingProps.join(', ')}`);
+  const message = lines.join('\n');
+  console.log(message);
+  return message;
 }
 
 function ensureFolder_(id, parent, name) {
@@ -71,51 +80,90 @@ function ensureFolder_(id, parent, name) {
   return parent ? parent.createFolder(name) : DriveApp.createFolder(name);
 }
 
-function testRevParser() {
-  requireOwner_();
-  [
-    'ขั้นตอนการตรวจรับวัตถุดิบ Rev.2.pdf',
-    'Machine Setup_Rev.1.pdf',
-    'QC Checklist (Rev 3).pdf',
-    'แบบฟอร์มขอซื้อ-REV.10.pdf',
-    'ขั้นตอนRev.5.pdf',
-    'Review Report.pdf',
-    'คู่มือพนักงานใหม่.pdf',
-  ].forEach((name) => console.log(`${name}  →  ${JSON.stringify(parseFileName_(name))}`));
+/**
+ * หน้าเว็บแสดง PDF ด้วย Google Drive viewer (drive.google.com/file/d/<id>/preview) แทนการโหลด PDF.js จาก CDN
+ * จึงต้องเปิดสิทธิ์ "ทุกคนที่มีลิงก์ดูได้" ให้สำเนา PDF — ID ของไฟล์เดาไม่ได้ และหน้าเว็บก็เปิดให้ทุกคนที่มีลิงก์อยู่แล้ว
+ */
+function shareVersionsForPreview_() {
+  try {
+    const folder = DriveApp.getFolderById(props_().getProperty('VERSIONS_FOLDER_ID'));
+    folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const files = folder.getFiles();
+    while (files.hasNext()) sharePreview_(files.next());
+    return '';
+  } catch (err) {
+    log_('WARN', `เปิดสิทธิ์ดูไฟล์ PDF ไม่ได้: ${err.message}`);
+    return `เปิดสิทธิ์ "ทุกคนที่มีลิงก์ดูได้" ให้โฟลเดอร์ versions ไม่ได้ (${err.message}) — ผู้ใช้จะดูตัวอย่าง PDF ไม่ได้ แต่ยังดาวน์โหลดได้`;
+  }
 }
 
-/** Phase 0: วาง PDF ภาษาไทยไว้ใน Google Drive แล้วใส่ ID ของไฟล์ใน Script Property TEST_PDF_DRIVE_ID */
-function testOcr() {
+function sharePreview_(file) {
+  if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  }
+}
+
+const SAMPLE_FILE_NAMES = [
+  'ขั้นตอนการตรวจรับวัตถุดิบ Rev.2.pdf',
+  'Machine Setup_Rev.1.pdf',
+  'QC Checklist (Rev 3).pdf',
+  'แบบฟอร์มขอซื้อ-REV.10.pdf',
+  'ขั้นตอนRev.5.pdf',
+  'Review Report.pdf',
+  'คู่มือพนักงานใหม่.pdf',
+];
+
+function testRevParser(names) {
   requireOwner_();
-  const id = props_().getProperty('TEST_PDF_DRIVE_ID');
-  if (!id) throw new Error('ตั้ง Script Property TEST_PDF_DRIVE_ID เป็น ID ของ PDF ใน Google Drive ก่อน');
+  const message = (Array.isArray(names) && names.length ? names : SAMPLE_FILE_NAMES).map((name) => {
+    const p = parseFileName_(name);
+    return `${name}\n   → ชื่อเอกสาร "${p.title}" · Rev ${p.rev || '(ไม่มี)'}`;
+  }).join('\n');
+  console.log(message);
+  return message;
+}
+
+/** fileId: ID ของ PDF ใน Google Drive (หรือใช้ Script Property TEST_PDF_DRIVE_ID เมื่อรันจาก editor) */
+function testOcr(fileId) {
+  requireOwner_();
+  const id = (typeof fileId === 'string' && fileId) || props_().getProperty('TEST_PDF_DRIVE_ID');
+  if (!id) throw new Error('ระบุไฟล์ PDF: ใช้เมนู ทดสอบ → อ่านข้อความจาก PDF หรือตั้ง Script Property TEST_PDF_DRIVE_ID');
   const file = DriveApp.getFileById(id);
   const started = Date.now();
   const text = extractPdfText_(file.getBlob(), 'test');
   const chars = Array.from(text.replace(/\s/g, ''));
   const thai = chars.filter((c) => /[฀-๿]/.test(c)).length;
-  console.log(`ไฟล์: ${file.getName()} (${(file.getSize() / 1024 / 1024).toFixed(2)} MB)`);
-  console.log(`ใช้เวลา ${((Date.now() - started) / 1000).toFixed(1)} วินาที, ได้ ${text.length} ตัวอักษร (ภาษาไทย ${chars.length ? Math.round(thai / chars.length * 100) : 0}%)`);
-  console.log('--- ข้อความ 1,500 ตัวอักษรแรก ---\n' + text.slice(0, 1500));
-  console.log('--- ข้อความ 500 ตัวอักษรสุดท้าย (ใช้ตรวจว่าอ่านครบทุกหน้าหรือไม่) ---\n' + text.slice(-500));
+  const message = [
+    `ไฟล์: ${file.getName()} (${(file.getSize() / 1024 / 1024).toFixed(2)} MB)`,
+    `ใช้เวลา ${((Date.now() - started) / 1000).toFixed(1)} วินาที · ได้ ${text.length.toLocaleString()} ตัวอักษร (ภาษาไทย ${chars.length ? Math.round(thai / chars.length * 100) : 0}%)`,
+    '',
+    '— ข้อความช่วงต้น —',
+    text.slice(0, 600),
+    '',
+    '— ข้อความช่วงท้าย (ตรวจว่าตรงกับหน้าสุดท้ายของ PDF หรือไม่) —',
+    text.slice(-300),
+  ].join('\n');
+  console.log(message);
+  return message;
 }
 
-/** Phase 0: ทดสอบ token + อ่านลิงก์ OneDrive ใน TEST_SOURCE แล้วแสดงไฟล์พร้อมเลข Rev ที่แยกได้ */
-function testGraphConnection() {
+/** link: ลิงก์โฟลเดอร์ OneDrive (หรือใช้ Script Property TEST_SOURCE เมื่อรันจาก editor) */
+function testGraphConnection(link) {
   requireOwner_();
   graphToken_(true);
-  console.log('✅ ขอ token จาก Microsoft Entra ID สำเร็จ');
-  const input = props_().getProperty('TEST_SOURCE');
-  if (!input) {
-    console.log('ตั้ง Script Property TEST_SOURCE เป็นลิงก์โฟลเดอร์ OneDrive เพื่อทดสอบต่อ');
-    return;
+  const lines = ['✅ ขอ token จาก Microsoft Entra ID สำเร็จ'];
+  const input = (typeof link === 'string' && link) || props_().getProperty('TEST_SOURCE');
+  if (input) {
+    const r = resolveSourceInput_(input);
+    lines.push(`✅ เปิดลิงก์ได้: "${r.name}" (${r.kind === 'folder' ? 'โฟลเดอร์' : 'ไฟล์'})`);
+    const items = listSourceItems_({ kind: r.kind, drive_id: r.driveId, item_id: r.itemId });
+    lines.push(`พบไฟล์ ${items.length} ไฟล์${items.length > 15 ? ' — แสดง 15 ไฟล์แรก' : ''}:`, '');
+    items.slice(0, 15).forEach(({ item, relPath }) => {
+      const p = parseFileName_(item.name);
+      lines.push(`${relPath ? relPath + '/' : ''}${item.name}\n   → "${p.title}" · Rev ${p.rev || '-'}`);
+    });
   }
-  const r = resolveSourceInput_(input);
-  console.log(`✅ เปิดลิงก์ได้: "${r.name}" (${r.kind}) driveId=${r.driveId}`);
-  const items = listSourceItems_({ kind: r.kind, drive_id: r.driveId, item_id: r.itemId });
-  console.log(`พบไฟล์ ${items.length} ไฟล์ — แสดง 30 ไฟล์แรก:`);
-  items.slice(0, 30).forEach(({ item, relPath }) => {
-    const p = parseFileName_(item.name);
-    console.log(`${relPath ? relPath + '/' : ''}${item.name}  →  Rev=${p.rev || '-'}  ชื่อเอกสาร="${p.title}"  แก้ไข=${item.fileSystemInfo && item.fileSystemInfo.lastModifiedDateTime}`);
-  });
+  const message = lines.join('\n');
+  console.log(message);
+  return message;
 }

@@ -170,3 +170,28 @@ test('ฟังก์ชัน Admin ต้องใช้รหัสผ่า�
   assert.throws(() => g.run('runScheduled({triggerUid: "fake"})'), /เจ้าของ script/);
   assert.doesNotThrow(() => g.run(`runScheduled({triggerUid: '${g.triggers[0].getUniqueId()}'})`));
 });
+
+test('สำเนา PDF เปิดสิทธิ์ให้ Google Drive viewer และมี previewUrl', () => {
+  const g = setupWithSource();
+  const versionsFolder = g.driveFiles.get(g.props.get('VERSIONS_FOLDER_ID'));
+  assert.equal(versionsFolder.sharing, 'ANYONE_WITH_LINK');
+  g.onedrive.add({ id: 'a1', name: 'Doc.pdf', content: 'x' });
+  g.run('syncNow()');
+  const doc = docByTitle(g, 'Doc');
+  const v = g.run(`getDocumentDetail('${doc.id}')`).versions[0];
+  const pdfId = v.previewUrl.match(/\/d\/([^/]+)\/preview$/)[1];
+  assert.equal(g.driveFiles.get(pdfId).sharing, 'ANYONE_WITH_LINK');
+});
+
+test('setup ส่งข้อความสรุป และหน้าต่างตั้งค่าบันทึกเฉพาะช่องที่กรอก', () => {
+  const g = createGas();
+  g.props.delete('TENANT_ID');
+  const msg = g.run('setup()');
+  assert.match(msg, /ติดตั้งเสร็จแล้ว/);
+  assert.match(msg, /TENANT_ID/);
+  g.run(`saveSettingsFromDialog({ TENANT_ID: ' t-123 ', CLIENT_SECRET: '' })`);
+  assert.equal(g.props.get('TENANT_ID'), 't-123');
+  assert.equal(g.props.get('CLIENT_SECRET'), 's'); // ช่องว่าง = ใช้ค่าเดิม
+  g.ctx.Session.getActiveUser = () => ({ getEmail: () => '' });
+  assert.throws(() => g.run(`saveSettingsFromDialog({ ADMIN_PASSWORD: 'x' })`), /เจ้าของ script/);
+});

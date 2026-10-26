@@ -61,16 +61,16 @@
   .history-item { width: 100%; text-align: left; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px 16px; }
   .history-item.selected { background: var(--surface-card); border-color: var(--surface-cream-strong); }
 
-  /* product-mockup-card-dark: ตัวแสดง PDF */
+  /* product-mockup-card-dark: ตัวแสดง PDF (Google Drive viewer) */
   .viewer { background: var(--surface-dark); border-radius: 12px; overflow: hidden; }
   .viewer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px;
     background: var(--surface-dark-elevated); color: var(--on-dark-soft); font-size: 14px; }
-  .viewer-body { padding: 16px; min-height: 60vh; max-height: 80vh; overflow: auto; color: var(--on-dark-soft); }
-  .pdf-page { display: block; margin: 0 auto 16px; max-width: 100%; height: auto; background: #fff; border-radius: 4px; }
+  .viewer-body { min-height: 60vh; color: var(--on-dark-soft); }
+  .viewer-frame { display: block; width: 100%; height: 78vh; border: 0; background: var(--surface-dark-soft); }
 
   /* code-window-card: log */
   .code-window { background: var(--surface-dark); color: var(--on-dark-soft); border-radius: 12px; padding: 20px 24px;
-    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; max-height: 22rem; overflow: auto; }
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.6; max-height: 22rem; overflow: auto; }
 
   .table th { font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted-soft); text-align: left; padding: 8px 12px 8px 0; }
   .table td { padding: 12px 12px 12px 0; border-top: 1px solid var(--hairline-soft); vertical-align: top; }

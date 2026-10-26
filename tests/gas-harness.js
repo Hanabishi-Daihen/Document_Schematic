@@ -135,7 +135,8 @@ class FakeOneDrive {
   }
 }
 
-function createGas() {
+/** source: 'src' = โหลด gas/*.js ทีละไฟล์, 'dist' = โหลด dist/Code.gs ที่ build แล้ว */
+function createGas({ source = 'src' } = {}) {
   const ss = new FakeSpreadsheet();
   const props = new Map([['SPREADSHEET_ID', 'SS'], ['ADMIN_PASSWORD', 'pw'], ['TENANT_ID', 't'], ['CLIENT_ID', 'c'], ['CLIENT_SECRET', 's']]);
   const cache = new Map();
@@ -152,16 +153,22 @@ function createGas() {
       getId: () => id, getUrl: () => 'https://drive/' + id, getName: () => f.blob.getName(),
       getBlob: () => f.blob.copyBlob(), getSize: () => f.blob.bytes.length,
       setTrashed: (t) => { f.trashed = t; }, isTrashed: () => f.trashed,
+      sharing: 'PRIVATE', getSharingAccess: () => f.sharing, setSharing: (a) => { f.sharing = a; },
     };
+    if (currentFolder) currentFolder.files.push(f);
     driveFiles.set(id, f);
     return f;
   };
+  let currentFolder = null;
   const makeFolder = (name) => {
     const id = 'D' + (++idSeq);
+    const inFolder = (fn) => { currentFolder = folder; try { return fn(); } finally { currentFolder = null; } };
     const folder = {
-      getId: () => id, getUrl: () => 'https://drive/' + id, isTrashed: () => false, name,
+      getId: () => id, getUrl: () => 'https://drive/' + id, isTrashed: () => false, name, files: [], sharing: 'PRIVATE',
       createFolder: (n) => makeFolder(n),
-      createFile: (a, content, mime) => (typeof a === 'string' ? makeFile(new FakeBlob(Buffer.from(content), mime, a), a) : makeFile(a)),
+      createFile: (a, content, mime) => inFolder(() => (typeof a === 'string' ? makeFile(new FakeBlob(Buffer.from(content), mime, a), a) : makeFile(a))),
+      setSharing: (a) => { folder.sharing = a; },
+      getFiles: () => { const list = folder.files.slice(); return { hasNext: () => list.length > 0, next: () => list.shift() }; },
     };
     driveFiles.set(id, folder);
     return folder;
@@ -212,6 +219,8 @@ function createGas() {
       },
     },
     DriveApp: {
+      Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
+      Permission: { VIEW: 'VIEW' },
       createFolder: (n) => makeFolder(n),
       getFolderById: (id) => driveFiles.get(id),
       getFileById: (id) => { const f = driveFiles.get(id); if (!f) throw new Error('no file ' + id); return f; },
@@ -226,9 +235,14 @@ function createGas() {
     MimeType: { GOOGLE_DOCS: 'application/vnd.google-apps.document', PDF: 'application/pdf', PLAIN_TEXT: 'text/plain' },
   };
   vm.createContext(ctx);
-  fs.readdirSync(GAS_DIR).filter((f) => f.endsWith('.js')).sort().forEach((f) => {
-    vm.runInContext(fs.readFileSync(path.join(GAS_DIR, f), 'utf8'), ctx, { filename: f });
-  });
+  if (source === 'dist') {
+    const file = path.join(__dirname, '..', 'dist', 'Code.gs');
+    vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: 'Code.gs' });
+  } else {
+    fs.readdirSync(GAS_DIR).filter((f) => f.endsWith('.js')).sort().forEach((f) => {
+      vm.runInContext(fs.readFileSync(path.join(GAS_DIR, f), 'utf8'), ctx, { filename: f });
+    });
+  }
   // ล้าง cache ค่าตั้งค่าระหว่างการเรียกแต่ละครั้ง (GAS จริงเริ่มใหม่ทุก execution)
   const run = (code) => vm.runInContext(`settingsCache_ = null; ${code}`, ctx);
   return { ctx, ss, props, onedrive, triggers, driveFiles, run };

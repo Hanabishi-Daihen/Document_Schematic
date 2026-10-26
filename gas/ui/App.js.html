@@ -1,6 +1,5 @@
 <script>
 (() => {
-  const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
   const BADGES = {
     revised: { label: 'Revised', cls: 'badge-revised' },
     updated: { label: 'Updated', cls: 'badge-updated' },
@@ -18,7 +17,6 @@
     filter: 'all',
     category: '',
     query: '',
-    renderToken: 0,
     adminPw: sessionGet('ds_admin_pw') || '',
   };
   const $ = (id) => document.getElementById(id);
@@ -288,8 +286,7 @@
     }
   }
 
-  async function showVersion(v) {
-    const token = ++state.renderToken;
+  function showVersion(v) {
     document.querySelectorAll('#history [data-version]').forEach((b) =>
       b.classList.toggle('selected', b.dataset.version === v.id));
     $('viewer').innerHTML = `
@@ -297,75 +294,33 @@
         <span class="text-on-dark">v${v.versionNo}${v.rev ? ' · Rev.' + esc(v.rev) : ''}</span>
         <span class="ml-auto flex gap-2">
           ${v.webUrl && v.fileStatus !== 'missing' ? `<a href="${esc(v.webUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-on-dark">เปิดใน OneDrive</a>` : ''}
-          <button id="dl-btn" class="btn btn-sm btn-primary" disabled>ดาวน์โหลด</button>
+          <button id="dl-btn" class="btn btn-sm btn-primary">ดาวน์โหลด</button>
         </span>
       </div>
-      <div id="viewer-body" class="viewer-body"><div class="py-24 text-center"><span class="spinner"></span> กำลังโหลดเอกสาร…</div></div>`;
-    const body = $('viewer-body');
-    let file;
+      <div class="viewer-body">
+        ${v.previewUrl
+          ? `<iframe class="viewer-frame" src="${esc(v.previewUrl)}" title="${esc(v.fileName)}" allow="autoplay"></iframe>`
+          : '<div class="py-24 text-center">ไม่มีไฟล์สำหรับแสดงตัวอย่าง</div>'}
+      </div>`;
+    $('dl-btn').onclick = () => downloadVersion(v, $('dl-btn'));
+  }
+
+  async function downloadVersion(v, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
     try {
-      file = await call('getVersionFile', v.id);
-    } catch (e) {
-      if (token === state.renderToken) body.innerHTML = `<div class="py-24 text-center text-error">${esc(errMsg(e))}</div>`;
-      return;
-    }
-    if (token !== state.renderToken) return;
-    const bytes = b64ToBytes(file.base64);
-    $('dl-btn').disabled = false;
-    $('dl-btn').onclick = () => {
-      const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
+      const file = await call('getVersionFile', v.id);
+      const url = URL.createObjectURL(new Blob([b64ToBytes(file.base64)], { type: file.mimeType }));
       const a = Object.assign(document.createElement('a'), { href: url, download: file.name });
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-    };
-    if (!/pdf/i.test(file.mimeType)) {
-      body.innerHTML = '<div class="py-24 text-center">ไฟล์ชนิดนี้แสดงตัวอย่างไม่ได้ กด "ดาวน์โหลด" หรือ "เปิดใน OneDrive"</div>';
-      return;
-    }
-    await renderPdf(bytes.slice(), token);
-  }
-
-  let pdfWorkerReady = false;
-  function setupPdfWorker() {
-    if (pdfWorkerReady) return;
-    try {
-      // HtmlService ไม่อนุญาต worker ข้ามโดเมนโดยตรง จึงสร้าง worker จาก blob แล้ว importScripts
-      const src = `importScripts('${PDFJS_BASE}pdf.worker.min.js');`;
-      pdfjsLib.GlobalWorkerOptions.workerPort =
-        new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
     } catch (e) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
+      toast('ดาวน์โหลดไม่สำเร็จ: ' + errMsg(e));
     }
-    pdfWorkerReady = true;
-  }
-
-  async function renderPdf(bytes, token) {
-    setupPdfWorker();
-    const viewer = $('viewer-body');
-    try {
-      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-      if (token !== state.renderToken) return;
-      viewer.innerHTML = '';
-      const width = viewer.clientWidth - 32;
-      const ratio = window.devicePixelRatio || 1;
-      for (let n = 1; n <= pdf.numPages; n++) {
-        if (token !== state.renderToken) return;
-        const page = await pdf.getPage(n);
-        const scale = Math.min(2, width / page.getViewport({ scale: 1 }).width);
-        const vp = page.getViewport({ scale: scale * ratio });
-        const canvas = document.createElement('canvas');
-        canvas.className = 'pdf-page';
-        canvas.width = vp.width;
-        canvas.height = vp.height;
-        canvas.style.width = vp.width / ratio + 'px';
-        viewer.appendChild(canvas);
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-      }
-    } catch (e) {
-      if (token === state.renderToken) viewer.innerHTML = `<div class="py-24 text-center text-error">แสดง PDF ไม่ได้: ${esc(errMsg(e))}</div>`;
-    }
+    btn.disabled = false;
+    btn.textContent = 'ดาวน์โหลด';
   }
 
   // ---------- Admin ----------

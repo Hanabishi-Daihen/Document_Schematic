@@ -3,7 +3,13 @@
   "private": true,
   "description": "รวมเอกสารจาก OneDrive พร้อมค้นหาและติดตาม Revision บน Google Apps Script",
   "scripts": {
+    "build": "node scripts/build.js",
     "test": "node --test \"tests/*.test.js\"",
-    "push": "clasp push"
+    "push": "npm run build && clasp push"
+  },
+  "devDependencies": {
+    "@fontsource/ibm-plex-sans-thai": "5.2.8",
+    "@fontsource/noto-serif-thai": "5.2.7",
+    "tailwindcss": "3.4.16"
   }
 }

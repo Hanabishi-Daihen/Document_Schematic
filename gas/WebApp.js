@@ -1,11 +1,6 @@
 function doGet() {
-  return HtmlService.createTemplateFromFile('ui/Index')
-    .evaluate()
+  // Index.html สร้างโดย npm run build (ฝัง CSS, ฟอนต์ และ JavaScript ไว้ครบในไฟล์เดียว)
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(APP_NAME)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-/** ใช้ใน template: <?!= include_('ui/Styles') ?> */
-function include_(name) {
-  return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
