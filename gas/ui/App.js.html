@@ -2,14 +2,14 @@
 (() => {
   const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
   const BADGES = {
-    revised: { label: '🔄 Revised', cls: 'badge-revised' },
-    updated: { label: '📝 Updated', cls: 'badge-updated' },
-    new: { label: '🆕 New', cls: 'badge-new' },
-    missing: { label: '⚠️ Missing', cls: 'badge-missing' },
+    revised: { label: 'Revised', cls: 'badge-revised' },
+    updated: { label: 'Updated', cls: 'badge-updated' },
+    new: { label: 'New', cls: 'badge-new' },
+    missing: { label: 'Missing', cls: 'badge-missing' },
   };
-  const CHANGE_LABEL = { initial: 'เริ่มต้น', revised: '🔄 Revised', updated: '📝 Updated', historical: 'ย้อนหลัง' };
+  const CHANGE_LABEL = { initial: 'เริ่มต้น', revised: 'Revised', updated: 'Updated', historical: 'ย้อนหลัง' };
   const FILTERS = [
-    ['all', 'ทั้งหมด'], ['revised', '🔄 Revised'], ['updated', '📝 Updated'], ['new', '🆕 New'], ['unread', '🔵 ยังไม่ได้อ่าน'],
+    ['all', 'ทั้งหมด'], ['revised', 'Revised'], ['updated', 'Updated'], ['new', 'New'], ['unread', 'ยังไม่ได้อ่าน'],
   ];
 
   const state = {
@@ -88,7 +88,7 @@
   // ---------- views ----------
   function show(view) {
     ['list', 'detail', 'admin'].forEach((v) => $('view-' + v).classList.toggle('hidden', v !== view));
-    document.querySelectorAll('.nav-link').forEach((a) =>
+    document.querySelectorAll('header .tab').forEach((a) =>
       a.classList.toggle('active', a.dataset.nav === (view === 'detail' ? 'list' : view)));
     window.scrollTo(0, 0);
   }
@@ -103,7 +103,7 @@
 
   // ---------- โหลดข้อมูล ----------
   async function loadBootstrap() {
-    $('list').innerHTML = '<div class="py-16 text-center text-slate-500"><span class="spinner"></span> กำลังโหลด…</div>';
+    $('list').innerHTML = '<div class="py-16 text-center text-muted"><span class="spinner"></span> กำลังโหลด…</div>';
     try {
       const data = await call('getBootstrap');
       state.docs = data.documents.map((d) => Object.assign(d, {
@@ -120,7 +120,7 @@
       if (data.pending) toast(`มี ${data.pending} ไฟล์รอประมวลผลในรอบ sync ถัดไป`);
       loadContentIndex();
     } catch (e) {
-      $('list').innerHTML = `<div class="py-16 text-center text-red-600">โหลดข้อมูลไม่สำเร็จ: ${esc(errMsg(e))}</div>`;
+      $('list').innerHTML = `<div class="py-16 text-center text-error">โหลดข้อมูลไม่สำเร็จ: ${esc(errMsg(e))}</div>`;
     }
   }
 
@@ -191,7 +191,7 @@
   // ---------- รายการเอกสาร ----------
   function renderChips() {
     $('chips').innerHTML = FILTERS.map(([k, label]) =>
-      `<button class="chip ${state.filter === k ? 'active' : ''}" data-filter="${k}">${label}</button>`).join('');
+      `<button class="tab ${state.filter === k ? 'active' : ''}" data-filter="${k}">${label}</button>`).join('');
   }
   $('chips').addEventListener('click', (e) => {
     const b = e.target.closest('[data-filter]');
@@ -211,32 +211,32 @@
     const { results, terms } = search();
     $('count').textContent = `${results.length.toLocaleString('th-TH')} เอกสาร`;
     if (!state.docs.length) {
-      $('list').innerHTML = '<div class="py-16 text-center text-slate-500">ยังไม่มีเอกสาร — เพิ่มลิงก์ OneDrive ที่หน้า Admin</div>';
+      $('list').innerHTML = '<div class="card-cream text-center py-16 text-muted">ยังไม่มีเอกสาร — เพิ่มลิงก์ OneDrive ที่หน้า Admin</div>';
       return;
     }
     if (!results.length) {
-      $('list').innerHTML = '<div class="py-16 text-center text-slate-500">ไม่พบเอกสารที่ตรงกับเงื่อนไข</div>';
+      $('list').innerHTML = '<div class="card-cream text-center py-16 text-muted">ไม่พบเอกสารที่ตรงกับเงื่อนไข</div>';
       return;
     }
     $('list').innerHTML = results.slice(0, 300).map(({ d, snippet }) => `
-      <a href="#" data-doc="${esc(d.id)}" class="block bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition px-4 py-3">
-        <div class="flex items-start gap-2">
-          ${isUnread(d) ? '<span title="ยังไม่ได้อ่าน" class="mt-2 w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>' : ''}
+      <a href="#" data-doc="${esc(d.id)}" class="doc-row">
+        <div class="flex items-start gap-3">
+          ${isUnread(d) ? '<span title="ยังไม่ได้อ่าน" class="unread-dot"></span>' : ''}
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="font-medium text-slate-900 break-words">${highlight(d.title, terms)}</span>
+              <span class="text-ink text-base font-medium break-words">${highlight(d.title, terms)}</span>
               ${revHtml(d.rev)} ${badgeHtml(d.badge)}
             </div>
-            <div class="mt-1 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
-              <span>📁 ${esc(d.category)}</span>
+            <div class="mt-1 text-[13px] text-muted flex flex-wrap gap-x-4 gap-y-1">
+              <span>${esc(d.category)}</span>
               <span>อัปเดต ${fmtDate(d.updatedAt)}</span>
               ${d.versions > 1 ? `<span>${d.versions} เวอร์ชัน</span>` : ''}
             </div>
-            ${snippet ? `<div class="mt-2 text-sm text-slate-600 bg-slate-50 rounded-md px-2 py-1 break-words">${highlight(snippet, terms)}</div>` : ''}
+            ${snippet ? `<div class="mt-3 text-sm text-body bg-surface-soft rounded-md px-3 py-2 break-words">${highlight(snippet, terms)}</div>` : ''}
           </div>
         </div>
       </a>`).join('') +
-      (results.length > 300 ? '<div class="text-center text-xs text-slate-500 py-2">แสดง 300 รายการแรก — พิมพ์คำค้นเพิ่มเพื่อกรอง</div>' : '');
+      (results.length > 300 ? '<div class="text-center text-[13px] text-muted-soft py-3">แสดง 300 รายการแรก — พิมพ์คำค้นเพิ่มเพื่อกรอง</div>' : '');
   }
   $('list').addEventListener('click', (e) => {
     const a = e.target.closest('[data-doc]');
@@ -249,34 +249,31 @@
   async function openDetail(docId) {
     const d = state.docs.find((x) => x.id === docId);
     show('detail');
-    $('detail-head').innerHTML = `<h2 class="text-xl font-semibold">${esc(d ? d.title : '')}</h2>`;
-    $('history').innerHTML = '<li class="text-sm text-slate-500"><span class="spinner"></span></li>';
-    $('viewer').innerHTML = '';
-    $('viewer-bar').innerHTML = '';
+    $('detail-head').innerHTML = `<h1 class="font-display text-ink text-[28px] sm:text-[36px] leading-[1.15] tracking-[-0.5px] break-words">${esc(d ? d.title : '')}</h1>`;
+    $('history').innerHTML = '<li class="text-sm text-muted"><span class="spinner"></span></li>';
+    $('viewer').innerHTML = '<div class="viewer-body grid place-items-center"><span class="spinner"></span></div>';
     try {
       const detail = await call('getDocumentDetail', docId);
       const current = detail.versions.find((v) => v.isCurrent) || detail.versions[0];
       $('detail-head').innerHTML = `
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-xl font-semibold text-slate-900 break-words">${esc(detail.title)}</h2>
-          ${revHtml(detail.rev)} ${d ? badgeHtml(d.badge) : ''}
-        </div>
-        <div class="mt-1 text-sm text-slate-500 flex flex-wrap gap-x-4">
-          <span>📁 ${esc(detail.category)}</span>
+        <h1 class="font-display text-ink text-[28px] sm:text-[36px] leading-[1.15] tracking-[-0.5px] break-words">${esc(detail.title)}</h1>
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
+          <span class="flex gap-2">${revHtml(detail.rev)} ${d ? badgeHtml(d.badge) : ''}</span>
+          <span>${esc(detail.category)}</span>
           ${current ? `<span>อัปเดต ${fmtDate(current.fileModifiedAt)}${current.modifiedBy ? ' โดย ' + esc(current.modifiedBy) : ''}</span>` : ''}
         </div>`;
       $('history').innerHTML = detail.versions.map((v) => `
         <li>
-          <button data-version="${esc(v.id)}" class="w-full text-left bg-white rounded-lg border ${v.isCurrent ? 'border-indigo-400' : 'border-slate-200'} hover:border-indigo-300 px-3 py-2">
-            <div class="flex flex-wrap items-center gap-1.5 text-sm">
-              <span class="font-medium">v${v.versionNo}</span>
+          <button data-version="${esc(v.id)}" class="history-item">
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="font-medium text-ink">v${v.versionNo}</span>
               ${revHtml(v.rev)}
-              <span class="text-xs text-slate-600">${CHANGE_LABEL[v.changeType] || esc(v.changeType)}</span>
-              ${v.isCurrent ? '<span class="badge badge-new">ปัจจุบัน</span>' : ''}
+              <span class="text-[13px] text-muted">${CHANGE_LABEL[v.changeType] || esc(v.changeType)}</span>
+              ${v.isCurrent ? '<span class="badge badge-current">ปัจจุบัน</span>' : ''}
             </div>
-            <div class="text-xs text-slate-500 mt-1">${fmtDate(v.fileModifiedAt)}${v.modifiedBy ? ' · ' + esc(v.modifiedBy) : ''}${v.sizeBytes ? ' · ' + fmtSize(v.sizeBytes) : ''}</div>
-            <div class="text-xs text-slate-400 mt-0.5 break-all">${esc(v.fileName)}</div>
-            ${v.note ? `<div class="text-xs text-slate-600 mt-1">📝 ${esc(v.note)}</div>` : ''}
+            <div class="text-[13px] text-muted mt-1">${fmtDate(v.fileModifiedAt)}${v.modifiedBy ? ' · ' + esc(v.modifiedBy) : ''}${v.sizeBytes ? ' · ' + fmtSize(v.sizeBytes) : ''}</div>
+            <div class="text-xs text-muted-soft mt-1 break-all">${esc(v.fileName)}</div>
+            ${v.note ? `<div class="text-[13px] text-body mt-2">${esc(v.note)}</div>` : ''}
           </button>
         </li>`).join('');
       $('history').onclick = (e) => {
@@ -286,30 +283,35 @@
       if (current) showVersion(current);
       if (d) { markSeen(d); }
     } catch (e) {
-      $('history').innerHTML = `<li class="text-sm text-red-600">${esc(errMsg(e))}</li>`;
+      $('history').innerHTML = `<li class="text-sm text-error">${esc(errMsg(e))}</li>`;
+      $('viewer').innerHTML = '';
     }
   }
 
   async function showVersion(v) {
     const token = ++state.renderToken;
     document.querySelectorAll('#history [data-version]').forEach((b) =>
-      b.classList.toggle('ring-2', b.dataset.version === v.id));
-    $('viewer-bar').innerHTML = `
-      <span class="text-slate-600">กำลังดู v${v.versionNo}${v.rev ? ' · Rev.' + esc(v.rev) : ''}</span>
-      <span class="ml-auto flex gap-2">
-        ${v.webUrl && v.fileStatus !== 'missing' ? `<a href="${esc(v.webUrl)}" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50">เปิดใน OneDrive</a>` : ''}
-        <button id="dl-btn" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">ดาวน์โหลด</button>
-      </span>`;
-    $('viewer').innerHTML = '<div class="py-24 text-center text-slate-500"><span class="spinner"></span> กำลังโหลดเอกสาร…</div>';
+      b.classList.toggle('selected', b.dataset.version === v.id));
+    $('viewer').innerHTML = `
+      <div class="viewer-bar">
+        <span class="text-on-dark">v${v.versionNo}${v.rev ? ' · Rev.' + esc(v.rev) : ''}</span>
+        <span class="ml-auto flex gap-2">
+          ${v.webUrl && v.fileStatus !== 'missing' ? `<a href="${esc(v.webUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-on-dark">เปิดใน OneDrive</a>` : ''}
+          <button id="dl-btn" class="btn btn-sm btn-primary" disabled>ดาวน์โหลด</button>
+        </span>
+      </div>
+      <div id="viewer-body" class="viewer-body"><div class="py-24 text-center"><span class="spinner"></span> กำลังโหลดเอกสาร…</div></div>`;
+    const body = $('viewer-body');
     let file;
     try {
       file = await call('getVersionFile', v.id);
     } catch (e) {
-      if (token === state.renderToken) $('viewer').innerHTML = `<div class="py-24 text-center text-red-600">${esc(errMsg(e))}</div>`;
+      if (token === state.renderToken) body.innerHTML = `<div class="py-24 text-center text-error">${esc(errMsg(e))}</div>`;
       return;
     }
     if (token !== state.renderToken) return;
     const bytes = b64ToBytes(file.base64);
+    $('dl-btn').disabled = false;
     $('dl-btn').onclick = () => {
       const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
       const a = Object.assign(document.createElement('a'), { href: url, download: file.name });
@@ -319,7 +321,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     };
     if (!/pdf/i.test(file.mimeType)) {
-      $('viewer').innerHTML = '<div class="py-24 text-center text-slate-600">ไฟล์ชนิดนี้แสดงตัวอย่างไม่ได้ กด "ดาวน์โหลด" หรือ "เปิดใน OneDrive"</div>';
+      body.innerHTML = '<div class="py-24 text-center">ไฟล์ชนิดนี้แสดงตัวอย่างไม่ได้ กด "ดาวน์โหลด" หรือ "เปิดใน OneDrive"</div>';
       return;
     }
     await renderPdf(bytes.slice(), token);
@@ -341,12 +343,12 @@
 
   async function renderPdf(bytes, token) {
     setupPdfWorker();
-    const viewer = $('viewer');
+    const viewer = $('viewer-body');
     try {
       const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
       if (token !== state.renderToken) return;
       viewer.innerHTML = '';
-      const width = viewer.clientWidth - 16;
+      const width = viewer.clientWidth - 32;
       const ratio = window.devicePixelRatio || 1;
       for (let n = 1; n <= pdf.numPages; n++) {
         if (token !== state.renderToken) return;
@@ -362,7 +364,7 @@
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
       }
     } catch (e) {
-      if (token === state.renderToken) viewer.innerHTML = `<div class="py-24 text-center text-red-600">แสดง PDF ไม่ได้: ${esc(errMsg(e))}</div>`;
+      if (token === state.renderToken) viewer.innerHTML = `<div class="py-24 text-center text-error">แสดง PDF ไม่ได้: ${esc(errMsg(e))}</div>`;
     }
   }
 
@@ -392,7 +394,7 @@
     $('admin-login').classList.add('hidden');
     const panel = $('admin-panel');
     panel.classList.remove('hidden');
-    panel.innerHTML = '<div class="py-16 text-center text-slate-500"><span class="spinner"></span></div>';
+    panel.innerHTML = '<div class="py-16 text-center text-muted"><span class="spinner"></span></div>';
     let s;
     try {
       s = await call('adminGetState', state.adminPw);
@@ -404,69 +406,76 @@
       $('login-error').textContent = errMsg(err);
       return;
     }
-    const statusCls = { ok: 'text-emerald-700', new: 'text-sky-700', error: 'text-red-600', disabled: 'text-slate-400' };
+    const statusCls = { ok: 'text-success', new: 'text-accent-teal', error: 'text-error', disabled: 'text-muted-soft' };
     panel.innerHTML = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        ${[['เอกสาร', s.stats.documents], ['ไฟล์', s.stats.files], ['รอประมวลผล', s.stats.pending], ['ล้มเหลว', s.stats.failed]]
-          .map(([k, v]) => `<div class="bg-white rounded-xl border border-slate-200 p-4"><div class="text-xs text-slate-500">${k}</div><div class="text-2xl font-semibold">${v}</div></div>`).join('')}
+      <div class="flex flex-wrap items-end gap-3">
+        <div>
+          <h1 class="font-display text-ink text-[28px] sm:text-[36px] leading-[1.15] tracking-[-0.5px]">จัดการระบบ</h1>
+          <p class="mt-2 text-muted">แหล่งเอกสาร การ sync และการจับคู่เอกสาร</p>
+        </div>
+        <div class="ml-auto flex gap-2">
+          <button id="sync-btn" class="btn btn-primary">Sync ตอนนี้</button>
+          <button id="logout-btn" class="btn btn-secondary">ออกจากระบบ</button>
+        </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="flex flex-wrap items-center gap-2">
-          <h3 class="font-semibold">แหล่งเอกสาร (OneDrive)</h3>
-          <button id="sync-btn" class="ml-auto px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">Sync ตอนนี้</button>
-          <button id="logout-btn" class="px-3 py-1.5 rounded-md border border-slate-300 text-sm">ออกจากระบบ</button>
-        </div>
-        <form id="add-source" class="mt-3 grid gap-2 sm:grid-cols-[1fr_200px_auto]">
-          <input name="input" required placeholder="วางลิงก์โฟลเดอร์/ไฟล์ OneDrive หรือ อีเมล:/path/โฟลเดอร์" class="h-10 rounded-lg border border-slate-300 px-3 min-w-0">
-          <input name="name" placeholder="ชื่อที่แสดง (ไม่บังคับ)" class="h-10 rounded-lg border border-slate-300 px-3 min-w-0">
-          <button class="h-10 px-4 rounded-lg bg-slate-900 text-white">เพิ่ม</button>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        ${[['เอกสาร', s.stats.documents], ['ไฟล์', s.stats.files], ['รอประมวลผล', s.stats.pending], ['ล้มเหลว', s.stats.failed]]
+          .map(([k, v]) => `<div class="card-cream"><div class="text-[13px] font-medium text-muted">${k}</div><div class="font-display text-ink text-[36px] leading-none mt-3 tracking-[-0.5px]">${v}</div></div>`).join('')}
+      </div>
+
+      <div class="card">
+        <h2 class="font-display text-ink text-[22px] tracking-[-0.3px]">แหล่งเอกสาร (OneDrive)</h2>
+        <form id="add-source" class="mt-4 grid gap-2 sm:grid-cols-[1fr_220px_auto]">
+          <input name="input" required placeholder="วางลิงก์โฟลเดอร์/ไฟล์ OneDrive หรือ อีเมล:/path/โฟลเดอร์" class="input min-w-0">
+          <input name="name" placeholder="ชื่อที่แสดง (ไม่บังคับ)" class="input min-w-0">
+          <button class="btn btn-primary">เพิ่ม</button>
         </form>
-        <div class="mt-3 overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead class="text-left text-slate-500"><tr><th class="py-2 pr-3">ชื่อ</th><th class="pr-3">ไฟล์</th><th class="pr-3">สถานะ</th><th class="pr-3">sync ล่าสุด</th><th></th></tr></thead>
+        <div class="mt-4 overflow-x-auto">
+          <table class="table w-full text-sm">
+            <thead><tr><th>ชื่อ</th><th>ไฟล์</th><th>สถานะ</th><th>Sync ล่าสุด</th><th></th></tr></thead>
             <tbody>
               ${s.sources.length ? s.sources.map((src) => `
-                <tr class="border-t border-slate-100 align-top">
-                  <td class="py-2 pr-3"><div class="font-medium">${esc(src.name)}</div><div class="text-xs text-slate-400 break-all">${esc(src.input)}</div></td>
-                  <td class="pr-3">${src.fileCount}</td>
-                  <td class="pr-3 ${statusCls[src.status] || ''}">${esc(src.status)}${src.lastError ? `<div class="text-xs text-red-600 max-w-xs break-words">${esc(src.lastError)}</div>` : ''}</td>
-                  <td class="pr-3 whitespace-nowrap">${fmtDateTime(src.lastSyncedAt)}</td>
-                  <td class="text-right"><button data-toggle-source="${esc(src.id)}" data-status="${src.status === 'disabled' ? 'ok' : 'disabled'}" class="text-xs text-indigo-600 hover:underline">${src.status === 'disabled' ? 'เปิด' : 'ปิด'}</button></td>
-                </tr>`).join('') : '<tr><td colspan="5" class="py-4 text-slate-500">ยังไม่มีแหล่งเอกสาร</td></tr>'}
+                <tr>
+                  <td><div class="font-medium text-ink">${esc(src.name)}</div><div class="text-xs text-muted-soft break-all">${esc(src.input)}</div></td>
+                  <td>${src.fileCount}</td>
+                  <td class="${statusCls[src.status] || ''}">${esc(src.status)}${src.lastError ? `<div class="text-xs text-error max-w-xs break-words">${esc(src.lastError)}</div>` : ''}</td>
+                  <td class="whitespace-nowrap">${fmtDateTime(src.lastSyncedAt)}</td>
+                  <td class="text-right"><button data-toggle-source="${esc(src.id)}" data-status="${src.status === 'disabled' ? 'ok' : 'disabled'}" class="text-link text-[13px]">${src.status === 'disabled' ? 'เปิด' : 'ปิด'}</button></td>
+                </tr>`).join('') : '<tr><td colspan="5" class="text-muted">ยังไม่มีแหล่งเอกสาร</td></tr>'}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <h3 class="font-semibold">รอยืนยันการจับคู่เอกสาร (${s.review.length})</h3>
-        <p class="text-xs text-slate-500 mt-1">ไฟล์ที่ชื่อคล้ายเอกสารเดิมแต่ไม่ตรงกันทุกตัวอักษร</p>
-        <div class="mt-3 space-y-2">
+      <div class="card">
+        <h2 class="font-display text-ink text-[22px] tracking-[-0.3px]">รอยืนยันการจับคู่เอกสาร (${s.review.length})</h2>
+        <p class="text-sm text-muted mt-1">ไฟล์ที่ชื่อคล้ายเอกสารเดิมแต่ไม่ตรงกันทุกตัวอักษร</p>
+        <div class="mt-4 space-y-2">
           ${s.review.length ? s.review.map((r) => `
-            <div class="border border-slate-200 rounded-lg p-3 text-sm">
-              <div><span class="text-slate-500">ไฟล์ใหม่:</span> <b class="break-words">${esc(r.fileName)}</b></div>
-              <div><span class="text-slate-500">คล้ายกับ:</span> ${esc(r.candidateTitle)} <span class="text-xs text-slate-400">(${Math.round(r.similarity * 100)}%)</span></div>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <button data-review="${esc(r.id)}" data-action="merge" class="px-3 py-1 rounded-md bg-indigo-600 text-white">เป็นเอกสารเดียวกัน</button>
-                <button data-review="${esc(r.id)}" data-action="new" class="px-3 py-1 rounded-md border border-slate-300">แยกเป็นเอกสารใหม่</button>
-                <button data-review="${esc(r.id)}" data-action="ignore" class="px-3 py-1 rounded-md text-slate-500">ไม่นำเข้า</button>
+            <div class="card-cream text-sm !p-4">
+              <div><span class="text-muted">ไฟล์ใหม่:</span> <span class="font-medium text-ink break-words">${esc(r.fileName)}</span></div>
+              <div class="mt-1"><span class="text-muted">คล้ายกับ:</span> ${esc(r.candidateTitle)} <span class="text-xs text-muted-soft">(${Math.round(r.similarity * 100)}%)</span></div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button data-review="${esc(r.id)}" data-action="merge" class="btn btn-sm btn-primary">เป็นเอกสารเดียวกัน</button>
+                <button data-review="${esc(r.id)}" data-action="new" class="btn btn-sm btn-secondary">แยกเป็นเอกสารใหม่</button>
+                <button data-review="${esc(r.id)}" data-action="ignore" class="btn btn-sm btn-text">ไม่นำเข้า</button>
               </div>
-            </div>`).join('') : '<div class="text-sm text-slate-500">ไม่มีรายการ</div>'}
+            </div>`).join('') : '<div class="text-sm text-muted-soft">ไม่มีรายการ</div>'}
         </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <h3 class="font-semibold">Log ล่าสุด</h3>
-        <div class="mt-2 max-h-80 overflow-auto text-xs font-mono space-y-1">
-          ${s.logs.map((l) => `<div class="${l.level === 'ERROR' ? 'text-red-600' : l.level === 'WARN' ? 'text-amber-700' : 'text-slate-600'}">${fmtDateTime(l.time)} [${esc(l.level)}] ${esc(l.message)}</div>`).join('') || '<div class="text-slate-500">ไม่มี log</div>'}
+      <div>
+        <h2 class="font-display text-ink text-[22px] tracking-[-0.3px] mb-3">Log ล่าสุด</h2>
+        <div class="code-window space-y-1">
+          ${s.logs.map((l) => `<div class="${l.level === 'ERROR' ? 'text-[#e88a8a]' : l.level === 'WARN' ? 'text-accent-amber' : ''}"><span class="text-muted-soft">${fmtDateTime(l.time)}</span> ${esc(l.level)} ${esc(l.message)}</div>`).join('') || '<div>ไม่มี log</div>'}
         </div>
       </div>`;
 
     $('logout-btn').onclick = () => { state.adminPw = ''; sessionSet('ds_admin_pw', ''); openAdmin(); };
     $('sync-btn').onclick = async (e) => {
       e.target.disabled = true;
-      e.target.innerHTML = '<span class="spinner"></span> กำลัง sync… (อาจใช้เวลาหลายนาที)';
+      e.target.innerHTML = '<span class="spinner"></span> กำลัง sync…';
       try {
         const r = await call('adminSyncNow', state.adminPw);
         toast(r.skipped ? 'มีงาน sync กำลังทำงานอยู่ ลองใหม่ภายหลัง'

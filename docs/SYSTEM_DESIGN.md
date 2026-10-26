@@ -301,6 +301,11 @@ Document Schematic/
 
 ไฟล์ HTML แยกเป็นส่วนด้วย `HtmlService.createTemplateFromFile()` + `<?!= include('...') ?>`, ใช้ Tailwind และไลบรารีจาก CDN
 
+**Visual design:** ตาม [docs/DESIGN.md](DESIGN.md) — พื้นครีม (`canvas #faf9f5`), ปุ่มหลักสี coral (`primary #cc785c`), หัวข้อตัวอักษร serif น้ำหนัก 400 (Noto Serif Thai แทน Copernicus เพราะต้องรองรับภาษาไทย), เนื้อหา Inter + IBM Plex Sans Thai, พื้นผิวสีเข้ม (`surface-dark #181715`) สำหรับตัวแสดง PDF, กล่อง Log และ footer
+- token สีอยู่ใน `tailwind.config` (`ui/Index.html`) และ CSS variables (`ui/Styles.html`) — แก้สีที่สองจุดนี้เท่านั้น
+- ป้ายสถานะ: Revised = coral, Updated = amber, New = teal, Missing = error
+- ใช้ไอคอนเอกสารของระบบเองแทนโลโก้ Anthropic ที่ไฟล์ DESIGN.md อ้างถึง
+
 1. **หน้าแรก** — ช่องค้นหา, "อัปเดตล่าสุด" (🔄 / 📝 / 🆕), หมวดตามโฟลเดอร์
 2. **ผลค้นหา / รายการ** — ชื่อเอกสาร | `Rev.2` | วันที่อัปเดต | ป้าย | หมวด, filter ตามหมวด/ป้าย/วันที่, ข้อความที่พบ + highlight
 3. **รายละเอียดเอกสาร**
