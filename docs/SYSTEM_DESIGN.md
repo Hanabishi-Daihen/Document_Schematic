@@ -331,26 +331,31 @@ Document Schematic/
 
 ```
 Document_Schematic/
-├── docs/SYSTEM_DESIGN.md
-├── gas/                      ← root ของ clasp
-│   ├── appsscript.json       (V8, Advanced Drive API, OAuth scopes, webapp config)
-│   ├── Config.gs             อ่าน Script Properties / Settings
-│   ├── Graph.gs              token, graphGet_, resolveShareUrl_, listFolder_, download_
-│   ├── Repo.gs               อ่าน/เขียน Google Sheets
-│   ├── RevParser.gs          parseFileName_, similarity
-│   ├── Sync.gs               syncAll (trigger), เทียบ cTag, จับคู่เอกสาร
-│   ├── Processor.gs          ดาวน์โหลด, เก็บสำเนา, OCR, สร้าง Version
-│   ├── SearchIndex.gs        สร้าง search-index.json.gz
-│   ├── Notify.gs             อีเมล / Teams
-│   ├── Api.gs                ฟังก์ชันที่หน้าเว็บเรียก
-│   ├── WebApp.gs             doGet, include
-│   ├── Setup.gs              สร้าง Sheet/โฟลเดอร์/trigger ครั้งแรก
-│   └── ui/                   Index.html, Styles.html, App.js.html, Admin.html
-├── tests/                    unit test ของ RevParser (รันด้วย Node)
-└── .clasp.json               (scriptId — ไม่มีความลับ)
+├── docs/
+│   ├── SYSTEM_DESIGN.md
+│   └── SETUP.md              คู่มือติดตั้งทีละขั้น
+├── gas/                      ← root ของ clasp (ไฟล์ .js = .gs ใน Apps Script)
+│   ├── appsscript.json       V8, Advanced Drive API v3, OAuth scopes, webapp config
+│   ├── Config.js             โครงสร้างตาราง, ค่าตั้งค่า, Script Properties
+│   ├── Repo.js               class Table อ่าน/เขียน Google Sheets เป็นก้อน + Logs
+│   ├── RevParser.js          parseFileName_, compareRev_, similarity_
+│   ├── Graph.js              token, retry/throttle, resolveSourceInput_, listSourceItems_, downloadItem_
+│   ├── Sync.js               runScheduled (trigger), syncSource_, assignDocument_
+│   ├── Processor.js          ดาวน์โหลด, เก็บสำเนา, OCR, สร้าง Version (initial/revised/updated/historical)
+│   ├── SearchIndex.js        สร้าง search-index.json.gz แบบเพิ่มเฉพาะส่วนที่เปลี่ยน
+│   ├── Api.js                ฟังก์ชันที่หน้าเว็บเรียก + ฟังก์ชัน Admin (ตรวจรหัสผ่าน)
+│   ├── WebApp.js             doGet, include_
+│   ├── Setup.js              setup() + ฟังก์ชันทดสอบ Phase 0
+│   └── ui/                   Index.html, Styles.html, App.js.html
+├── tests/                    รันด้วย Node: npm test
+│   ├── gas-harness.js        จำลอง Sheets/Drive/UrlFetch/Graph ใน memory
+│   ├── revParser.test.js
+│   └── sync.test.js          ทดสอบ flow sync → revision ทั้งระบบ
+└── .clasp.json.example
 ```
-- เขียนโค้ดในเครื่อง → `clasp push` ขึ้น GAS → `clasp deploy`
-- ตรรกะที่ไม่พึ่ง GAS (RevParser, การจับคู่) เขียนให้ทดสอบด้วย Node ได้
+- เขียนโค้ดในเครื่อง → `npm test` → `clasp push` ขึ้น GAS → Deploy
+- โค้ดทั้งหมดรันกับ GAS จำลองใน Node ได้ (`tests/gas-harness.js`) จึงทดสอบ flow การ sync/จับคู่/สร้าง Revision ได้โดยไม่ต้องต่อ OneDrive จริง
+- แจ้งเตือน (Notify) อยู่ใน Phase 4
 
 ---
 
@@ -358,9 +363,9 @@ Document_Schematic/
 
 | Phase | งาน | ผลลัพธ์ |
 |---|---|---|
-| **0. เตรียม** | สร้าง Gmail กลาง, ขอ IT ลงทะเบียน Entra App, ทดสอบเรียก Graph จาก GAS, ทดสอบ OCR กับ PDF จริง 3–5 ไฟล์ | ยืนยันว่าเส้นทางหลักใช้ได้ |
-| **1. MVP** | Setup Sheets/Drive, เพิ่มลิงก์โฟลเดอร์, sync ทุก 30 นาที, แยก Rev + จับคู่, เก็บสำเนา PDF, หน้า list + ค้นจากชื่อ + ป้าย, ดู PDF + ประวัติ | ใช้งานจริงได้ |
-| **2. ค้นเนื้อหา** | OCR ผ่าน Drive, ตัด PDF ยาวด้วย pdf-lib, search index ฝั่ง browser + highlight | ค้นจากเนื้อหาภาษาไทยได้ |
+| **0. เตรียม** ✅ โค้ดพร้อม | `testRevParser`, `testOcr`, `testGraphConnection` ใน `Setup.js` — รอทดสอบกับ OneDrive/PDF จริง | ยืนยันว่าเส้นทางหลักใช้ได้ |
+| **1. MVP** ✅ โค้ดพร้อม | Setup Sheets/Drive, เพิ่มลิงก์โฟลเดอร์, sync ทุก 30 นาที, แยก Rev + จับคู่, คิวให้ Admin ยืนยัน, เก็บสำเนา PDF, หน้า list + ป้าย + ยังไม่ได้อ่าน, ดู PDF + ประวัติ, หน้า Admin | ใช้งานจริงได้ |
+| **2. ค้นเนื้อหา** 🟡 บางส่วน | ✅ OCR ผ่าน Drive + search index ฝั่ง browser + highlight · ⏳ ตัด PDF ยาว > 10 หน้าด้วย pdf-lib (ทำหลังผล `testOcr`) | ค้นจากเนื้อหาภาษาไทยได้ |
 | **3. เปรียบเทียบ + Admin** | เทียบข้อความ/วางคู่ PDF, คิวจับคู่, สถานะยังไม่ได้อ่าน, หมายเหตุ | ตรวจสอบการเปลี่ยนแปลงได้ละเอียด |
 | **4. แจ้งเตือน + ขยาย** | ติดตาม + อีเมลสรุป / Teams, (ทางเลือก) ย้ายหน้าเว็บไป GitHub Pages + Microsoft login | ใช้งานสะดวกขึ้น |
 

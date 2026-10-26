@@ -5,8 +5,11 @@ Web app สำหรับรวมเอกสาร PDF จาก OneDrive อ
 - ดึงเอกสารจากลิงก์ OneDrive ผ่าน Microsoft Graph API (sync อัตโนมัติทุก 30 นาที)
 - แยกเลข `Rev.N` จากชื่อไฟล์ แสดงป้าย **🔄 Revised** (เลข Rev เปลี่ยน) และ **📝 Updated** (แก้เนื้อหาแต่ Rev เดิม)
 - ค้นหาจากชื่อและเนื้อหา PDF ภาษาไทย (OCR ผ่าน Google Drive)
-- เก็บสำเนาทุกเวอร์ชัน ดูย้อนหลังและเปรียบเทียบได้
+- เก็บสำเนาทุกเวอร์ชัน ดูย้อนหลังได้ในเว็บ
 
 Stack: Google Apps Script · Google Sheets (ฐานข้อมูล) · Google Drive (เก็บไฟล์ + OCR) · Microsoft Graph API
 
-ดูรายละเอียดการออกแบบได้ที่ [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)
+## เริ่มต้น
+- **ติดตั้ง:** [docs/SETUP.md](docs/SETUP.md)
+- **การออกแบบระบบ:** [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)
+- **ทดสอบโค้ด (Node 18+):** `npm test`
